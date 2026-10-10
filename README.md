@@ -1,8 +1,12 @@
 # Brain Garden
 
-**Harvest it. Seed it. Live in it.**
-
-<!-- hero diagram: assets/brain-garden-loop-*.svg, embedded with <picture> once designed -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brain-garden-loop-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brain-garden-loop-light.svg">
+    <img src="assets/brain-garden-loop.png" width="900" alt="Brain Garden: harvest it, seed it, live in it, learn, in a loop around your vault, which holds short-term (today's daily note), mid-term (Now.md) and long-term memory (your notes), with private beds, optional shared beds, and desire paths coming soon.">
+  </picture>
+</p>
 
 A brain garden is a second brain you can plant in half an hour: everything you know, read and
 do, organized as linked notes in Obsidian so an AI can find its way to the answer fast, and

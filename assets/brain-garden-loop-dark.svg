@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="870" viewBox="0 0 1000 870" role="img" aria-label="Brain Garden: harvest it, seed it, live in it, learn. A loop around your vault, where today's note, Now.md and long-term notes grow like a garden.">
+<defs>
+<filter id="bg-soft-d" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000000" flood-opacity="0.35"/></filter>
+</defs>
+<style>
+@keyframes bg-flow{to{stroke-dashoffset:-34.2}}
+@keyframes bg-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.bg-stones{animation:bg-flow 3.2s linear infinite}
+.bg-step{animation:bg-rise .8s cubic-bezier(.2,.7,.3,1) both}
+.bg-s1{animation-delay:.1s}.bg-s2{animation-delay:.35s}.bg-s3{animation-delay:.6s}.bg-s4{animation-delay:.85s}
+@media (prefers-reduced-motion:reduce){.bg-stones,.bg-step{animation:none}}
+</style>
+<g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0.5" y="0.5" width="999" height="869" rx="28" fill="#161C17" stroke="#2A3329"/>
+<path d="M 384 52 C 390 44 400 44 406 52 C 400 60 390 60 384 52 Z" fill="#5F8A55"/>
+<path d="M 618 52 C 612 44 602 44 596 52 C 602 60 612 60 618 52 Z" fill="#5F8A55"/>
+<text x="502" y="57" text-anchor="middle" font-size="14" font-weight="700" letter-spacing="5" fill="#93C487">BRAIN GARDEN</text>
+<text x="500" y="108" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="40" fill="#ECF0E6">Harvest it. Seed it. Live in it.</text>
+<path class="bg-band" d="M 952.5 440 A 452.5 275.8 0 1 1 47.5 440 A 452.5 275.8 0 1 1 952.5 440" fill="none" stroke="#2E2B21" stroke-width="22"/>
+<path class="bg-stones" d="M 952.5 440 A 452.5 275.8 0 1 1 47.5 440 A 452.5 275.8 0 1 1 952.5 440" fill="none" stroke="#8F7350" stroke-width="7" stroke-linecap="round" stroke-dasharray="0.1 17"/>
+<g fill="none" stroke="#D49A64" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -6 -10 L 6 0 L -6 10" transform="translate(500 164.2)"/>
+<path d="M -6 -10 L 6 0 L -6 10" transform="translate(952.5 440) rotate(90)"/>
+<path d="M -6 -10 L 6 0 L -6 10" transform="translate(500 715.8) rotate(180)"/>
+<path d="M -6 -10 L 6 0 L -6 10" transform="translate(47.5 440) rotate(-90)"/>
+</g>
+<rect x="350" y="215" width="300" height="460" rx="26" fill="#1C261D" stroke="#2A3A2A" stroke-width="10"/>
+<rect x="350" y="215" width="300" height="460" rx="26" fill="none" stroke="#4F7048" stroke-width="7" stroke-linecap="round" stroke-dasharray="0.1 11"/>
+<text x="502" y="250" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="3" fill="#93C487">YOUR VAULT</text>
+<text x="500" y="272" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14.5" fill="#B3BEAD">a garden you can walk around in</text>
+<rect x="368" y="290" width="264" height="110" rx="14" fill="#222E23" stroke="#34452F" stroke-width="1.5"/>
+<g transform="translate(406 345)" fill="none" stroke="#93C487" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -13 14 L 13 14"/>
+<path d="M 0 14 L 0 2"/>
+<path d="M 0 5 C -8 5 -11 -1 -11 -5 C -4 -5 0 -1 0 5 Z" fill="#3A5636"/>
+<path d="M 0 2 C 2 -6 8 -9 12 -9 C 12 -2 6 2 0 2 Z" fill="#3A5636"/>
+</g>
+<text x="448" y="320" font-size="12" font-weight="700" letter-spacing="1.5" fill="#93C487">SHORT-TERM</text>
+<text x="448" y="346" font-size="17" font-weight="700" fill="#ECF0E6">Today's daily note</text>
+<text x="448" y="370" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#B3BEAD">Daily/</text>
+<rect x="368" y="412" width="264" height="110" rx="14" fill="#222E23" stroke="#34452F" stroke-width="1.5"/>
+<g transform="translate(406 467)" fill="none" stroke="#93C487" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -13 17 L 13 17"/>
+<path d="M 0 17 L 0 -12"/>
+<path d="M 0 8 C -8 8 -12 2 -12 -1 C -5 -1 0 3 0 8 Z" fill="#3A5636"/>
+<path d="M 0 0 C 8 0 12 -6 12 -9 C 5 -9 0 -5 0 0 Z" fill="#3A5636"/>
+<path d="M 0 -9 C -6 -10 -8 -15 -8 -18 C -3 -18 0 -14 0 -9 Z" fill="#3A5636"/>
+</g>
+<text x="448" y="442" font-size="12" font-weight="700" letter-spacing="1.5" fill="#93C487">MID-TERM</text>
+<text x="448" y="468" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#ECF0E6">Now.md</text>
+<text x="448" y="492" font-size="14" fill="#B3BEAD">what's in flight</text>
+<rect x="368" y="534" width="264" height="124" rx="14" fill="#222E23" stroke="#34452F" stroke-width="1.5"/>
+<g transform="translate(406 594)" fill="none" stroke="#93C487" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -15 20 L 15 20"/>
+<path d="M 0 20 L 0 2"/>
+<path d="M 0 10 L -6 4 M 0 7 L 6 1"/>
+<path d="M -14 -4 C -18 -12 -12 -20 -5 -19 C -2 -25 8 -24 10 -18 C 17 -17 18 -7 13 -3 C 11 3 3 4 0 1 C -4 4 -12 3 -14 -4 Z" fill="#3A5636"/>
+</g>
+<text x="448" y="564" font-size="12" font-weight="700" letter-spacing="1.5" fill="#93C487">LONG-TERM</text>
+<text x="448" y="590" font-size="17" font-weight="700" fill="#ECF0E6">Notes, References,</text>
+<text x="448" y="612" font-size="17" font-weight="700" fill="#ECF0E6">People, Clippings</text>
+<text x="448" y="636" font-size="13" fill="#B3BEAD">Work: Knowledge, Playbooks</text>
+<g class="bg-step bg-s1"><g transform="translate(40 160)">
+<rect width="280" height="170" rx="18" fill="#1F2620" stroke="#6B5530" stroke-width="1.5" filter="url(#bg-soft-d)"/>
+<circle cx="34" cy="38" r="15" fill="#E2AD5B"/>
+<text x="34" y="43.5" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2620">1</text>
+<text x="60" y="45" font-size="20" font-weight="800" letter-spacing="2" fill="#E2AD5B">HARVEST</text>
+<g transform="translate(246 38)" fill="none" stroke="#E2AD5B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="-5" cy="-5" r="4.5" fill="#5A4520"/>
+<circle cx="5" cy="-6" r="4" fill="#5A4520"/>
+<path d="M -11 -2 C -11 -18 11 -18 11 -2"/>
+<path d="M -16 -2 L 16 -2 L 12 14 L -12 14 Z" fill="#3D3220"/>
+<path d="M -14 5 L 14 5"/>
+</g>
+<text font-size="15.5" fill="#B3BEAD"><tspan x="24" y="84">Gather it from where it</tspan><tspan x="24" y="106">already lives: notes apps,</tspan><tspan x="24" y="128">voice memos, articles, PDFs,</tspan><tspan x="24" y="150">email, old journals</tspan></text>
+</g></g>
+<g class="bg-step bg-s2"><g transform="translate(680 160)">
+<rect width="280" height="170" rx="18" fill="#1F2620" stroke="#5E4A3A" stroke-width="1.5" filter="url(#bg-soft-d)"/>
+<circle cx="34" cy="38" r="15" fill="#D3A27C"/>
+<text x="34" y="43.5" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2620">2</text>
+<text x="60" y="45" font-size="20" font-weight="800" letter-spacing="2" fill="#D3A27C">SEED</text>
+<g transform="translate(246 38)" fill="none" stroke="#D3A27C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -17 14 C -8 7 8 7 17 14"/>
+<path d="M 0 9 L 0 -4"/>
+<rect x="-10" y="-17" width="20" height="13" rx="2.5" fill="#3D3128"/>
+<path d="M -5 -12.5 L 5 -12.5 M -5 -8.5 L 2 -8.5"/>
+</g>
+<text font-size="15.5" fill="#B3BEAD"><tspan x="24" y="84">Plant it back in the vault</tspan><tspan x="24" y="106">so it means something:</tspan><tspan x="24" y="128">filed, named, linked and</tspan><tspan x="24" y="150">tagged by topic</tspan></text>
+</g></g>
+<g class="bg-step bg-s3"><g transform="translate(680 550)">
+<rect width="280" height="170" rx="18" fill="#1F2620" stroke="#3D5A40" stroke-width="1.5" filter="url(#bg-soft-d)"/>
+<circle cx="34" cy="38" r="15" fill="#8CCB98"/>
+<text x="34" y="43.5" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2620">3</text>
+<text x="60" y="45" font-size="20" font-weight="800" letter-spacing="2" fill="#8CCB98">LIVE IN IT</text>
+<g transform="translate(246 38)" fill="none" stroke="#8CCB98" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -18 15 L 18 15"/>
+<path d="M -13 15 L -13 -2 A 13 13 0 0 1 13 -2 L 13 15"/>
+<path d="M -8 15 L -8 -2 A 8 8 0 0 1 8 -2 L 8 15"/>
+<circle cx="-9" cy="-12" r="3" fill="#3A5636"/>
+<circle cx="10" cy="-9" r="3" fill="#3A5636"/>
+</g>
+<text font-size="15.5" fill="#B3BEAD"><tspan x="24" y="84">Use it every day. Tidy,</tspan><tspan x="24" y="106">linked notes let AI find</tspan><tspan x="24" y="128">its way to your answers</tspan><tspan x="24" y="150">fastest</tspan></text>
+</g></g>
+<g class="bg-step bg-s4"><g transform="translate(40 550)">
+<rect width="280" height="170" rx="18" fill="#1F2620" stroke="#3A5A5E" stroke-width="1.5" filter="url(#bg-soft-d)"/>
+<circle cx="34" cy="38" r="15" fill="#85C3CC"/>
+<text x="34" y="43.5" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2620">4</text>
+<text x="60" y="45" font-size="20" font-weight="800" letter-spacing="2" fill="#85C3CC">LEARN</text>
+<g transform="translate(246 38)" fill="none" stroke="#85C3CC" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M 6.5 -11.26 A 13 13 0 1 1 -6.5 -11.26"/>
+<path d="M -12.3 -12.8 L -6.5 -11.26 L -8.05 -5.46"/>
+<path d="M 0 6 C -6 2 -5 -4 0 -6 C 5 -4 6 2 0 6 Z" fill="#2D4A4E"/>
+</g>
+<text font-size="15.5" fill="#B3BEAD"><tspan x="24" y="84">The garden improves its own</tspan><tspan x="24" y="106">process as you use it: most</tspan><tspan x="24" y="128">in the early days, less once</tspan><tspan x="24" y="150">it settles</tspan></text>
+</g></g>
+<path d="M 40 760 L 960 760" stroke="#2E352C" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 6"/>
+<g transform="translate(60 806)" fill="none" stroke="#93C487" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M -6 -3 L -6 -8 A 6 6 0 0 1 6 -8 L 6 -3"/>
+<rect x="-10" y="-3" width="20" height="15" rx="3.5" fill="#2C3D2B"/>
+</g>
+<text x="92" y="800" font-size="16" font-weight="700" fill="#ECF0E6">Private beds</text>
+<text x="92" y="822" font-size="14" fill="#B3BEAD">yours alone, by default</text>
+<g transform="translate(350 806)" fill="none" stroke="#93C487" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="-6" cy="-5" r="4.5" fill="#2C3D2B"/>
+<path d="M -15 11 C -15 2 3 2 3 11" fill="#2C3D2B"/>
+<circle cx="7" cy="-3" r="4.5" fill="#2C3D2B"/>
+<path d="M -2 13 C -2 4 16 4 16 13" fill="#2C3D2B"/>
+</g>
+<text x="382" y="800" font-size="16" font-weight="700" fill="#ECF0E6">Shared beds</text>
+<text x="382" y="822" font-size="14" fill="#B3BEAD">optional: open a gate to others</text>
+<g transform="translate(660 806)" fill="none" stroke="#D49A64" stroke-linecap="round">
+<path d="M -18 11 C -9 11 -8 0 0 0" stroke-width="5"/>
+<path d="M 0 0 C 8 0 8 -11 18 -11" stroke-width="2.4" stroke-dasharray="0.1 5"/>
+</g>
+<text x="692" y="800" font-size="16" font-weight="700" fill="#ECF0E6">Desire paths</text>
+<rect x="800" y="785" width="100" height="20" rx="10" fill="#3A3023"/>
+<text x="850" y="799" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.2" fill="#D3A27C">COMING SOON</text>
+<text font-size="14" fill="#B3BEAD"><tspan x="692" y="822">busy routes grow stronger,</tspan><tspan x="692" y="842">quiet ones get pruned</tspan></text>
+</g>
+</svg>
