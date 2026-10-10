@@ -1,0 +1,130 @@
+/* Response cards (see main.js). Colours come from the theme, so light and dark both follow it.
+   In the editor each item gets one thread line at --response-thread-x (where Obsidian draws its
+   indent guide, under the checkbox), and the card's accent edge sits on that thread. */
+
+body {
+  --response-card-bg: var(--background-primary-alt);
+  --response-card-edge: var(--interactive-accent);
+  --response-card-pad: 0.85em;
+  --response-card-inset: 0.5em; /* extra room between the accent edge and the text, and on the right */
+  --response-card-cap: 0.6em;   /* how far the card reaches above its caption and below its last line */
+  --response-thread-x: 0.85em;
+}
+
+/* Editor: the thread. Obsidian's guide is hidden on these lines (it breaks at every blank line)
+   and one continuous line is drawn instead, starting under the checkbox. */
+.markdown-source-view.mod-cm6 .cm-line.response-thread,
+.markdown-source-view.mod-cm6 .cm-line.response-thread-head {
+  position: relative;
+}
+.markdown-source-view.mod-cm6 .cm-line.response-thread::after,
+.markdown-source-view.mod-cm6 .cm-line.response-thread-head::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--response-thread-x);
+  border-left: var(--indentation-guide-width, 1px) solid var(--indentation-guide-color);
+  pointer-events: none;
+}
+.markdown-source-view.mod-cm6 .cm-line.response-thread-head::after {
+  top: 1.45em;
+}
+/* On card lines the card's accent edge is the thread. */
+.markdown-source-view.mod-cm6 .cm-line.response-card.response-thread::after {
+  display: none;
+}
+.markdown-source-view.mod-cm6 .cm-line.response-thread .cm-hmd-list-indent > .cm-indent:first-child::before {
+  display: none;
+}
+
+/* Editor: each card line paints its slice of the card behind the text. The text is inset on both
+   sides by transparent borders (Obsidian owns list lines' padding, set inline, and their margins,
+   which centre readable-width lines) and the slice reaches back out past them, so the accent edge
+   stays on the thread and only the text moves in. */
+.markdown-source-view.mod-cm6 .cm-line.response-card {
+  position: relative;
+  z-index: 0;
+  border-left: var(--response-card-inset) solid transparent;
+  border-right: var(--response-card-inset) solid transparent;
+}
+.markdown-source-view.mod-cm6 .cm-line.response-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--response-thread-x) - var(--response-card-inset));
+  right: calc(-1 * (var(--response-card-pad) + var(--response-card-inset)));
+  background: var(--response-card-bg);
+  border-left: 3px solid var(--response-card-edge);
+  pointer-events: none;
+}
+/* Rounded on all four corners; the accent edge curves with them. */
+.markdown-source-view.mod-cm6 .cm-line.response-card-first::before {
+  top: calc(-1 * var(--response-card-cap));
+  border-top-left-radius: var(--radius-m);
+  border-top-right-radius: var(--radius-m);
+}
+.markdown-source-view.mod-cm6 .cm-line.response-card-last::before {
+  bottom: calc(-1 * var(--response-card-cap));
+  border-bottom-left-radius: var(--radius-m);
+  border-bottom-right-radius: var(--radius-m);
+}
+
+/* The label reads as the card's caption rather than as bold body text. */
+.markdown-source-view.mod-cm6 .cm-line.response-card-first .cm-strong,
+.response-card-block > p:first-child > strong:first-child {
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Reading view: a real box around the Response paragraph and the answer. Inline-block so a ticked
+   question's line-through (set on the whole list item) does not cross out the answer. */
+.response-card-block {
+  display: inline-block;
+  box-sizing: border-box;
+  width: calc(100% + 2 * var(--response-card-pad));
+  text-decoration: none;
+  color: var(--text-normal);
+  background: var(--response-card-bg);
+  border-left: 3px solid var(--response-card-edge);
+  border-radius: var(--radius-m);
+  margin: 0.5em calc(-1 * var(--response-card-pad)) 0.7em calc(-1 * var(--response-card-pad));
+  padding: var(--response-card-cap) calc(var(--response-card-pad) + var(--response-card-inset));
+}
+.response-card-block > :first-child { margin-top: 0; }
+.response-card-block > :last-child { margin-bottom: 0; }
+
+/* Reading view: the fold toggle (main.js), placed like Obsidian's own list toggle: shown on hover,
+   and always while folded. */
+.markdown-rendered li > .response-fold-toggle {
+  position: absolute;
+  margin-inline-start: -2.65em;
+  padding-inline-end: 2em;
+  cursor: var(--cursor);
+  opacity: 0;
+}
+.markdown-rendered li:hover > .response-fold-toggle,
+.markdown-rendered li > .response-fold-toggle.is-collapsed {
+  opacity: 1;
+}
+.markdown-rendered li.response-folded > .response-fold-body {
+  display: none;
+}
+
+/* Ticked questions fold away (main.js) instead of being crossed out. */
+.workbook {
+  --checklist-done-decoration: none;
+  --checklist-done-color: var(--text-normal);
+}
+
+/* An indent-only body line: the indent is drawn one list indent wide so the cursor sits at the
+   card's text column (see IndentWidget in main.js). */
+.markdown-source-view.mod-cm6 .response-card-indent {
+  display: inline-block;
+  width: var(--list-indent);
+}

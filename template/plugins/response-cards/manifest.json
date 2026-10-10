@@ -1,0 +1,9 @@
+{
+  "id": "response-cards",
+  "name": "Response Cards",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "In notes with cssclasses: workbook, draws each **Response:** or **Reply:** block inside a task item as a card you write in, keeps pastes inside it, and folds an item away once it is ticked.",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

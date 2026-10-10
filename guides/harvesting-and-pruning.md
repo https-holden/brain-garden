@@ -55,6 +55,25 @@ remembers where it came from, and `Sources.md` records when you last pulled it, 
 brief can remind you when one is overdue and the monthly report can tell you which sources you
 actually use.
 
+### Capture context now, ask later
+
+Stamp every entry with when, where and why it came up, even before you have any use for it.
+Context costs a few words at the time and is gone a week later, and the questions worth asking
+your vault only show up once there is a pile to ask: "what was I worried about the last three
+times I was in Lisbon?", "what did I read the week I changed jobs?", "when did this idea first
+come up?".
+
+- **Date and time**, always: `YYYY-MM-DD`, and the hour for anything written as it happens. A
+  journal entry or voice memo can carry it in its name, like `2026-10-10 09h40 Lisbon`.
+- **Place**, when it might matter: a city, home, the office, a train.
+- **Context**: one line on what was going on. Who you were with, what prompted it, the mood.
+  "After the call with Sam about the move" is enough.
+
+Do not sort it or decide what it is for yet. The AI can find the pattern later, but only if
+the date, place and context were written down at the time. Imported material keeps its own:
+`ingest.py` stamps `created`, `url` and `via` on everything it brings in, so leave
+them in.
+
 ### Backfills: sample first
 
 Importing ten years of notes in one go buries the good ones and teaches you nothing. Instead:

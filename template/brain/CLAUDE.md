@@ -18,6 +18,18 @@ change is recorded in `Decisions.md` in the same session.
   a template, a Base, and a row in both tables below).
 - Approval is by numbered list. @@OWNER@@ skips or edits by number, the rest is applied. Git
   is the undo.
+- **Say how before you do.** For any non-trivial task (more than one step, more than one note
+  touched, anything that leaves the vault, or anything you have not done here before), first
+  say in a few lines how you would solve it: the steps, what changes, and the choice you made
+  where there was one. Then wait for a go. A lookup, an answer or one obvious edit needs no
+  plan.
+- **Log every action.** Everything done on @@OWNER@@'s behalf (a note made, edited or moved,
+  something brought in, a message drafted or sent, an event or task made in a connected tool)
+  gets one line appended to @@ACTION_LOG@@:
+  `- YYYY-MM-DD HH:MM What was done, with a [[link]]. Why: the reason. Chose: any choice made. Asked by: who, and where.`
+  "Asked by" is @@OWNER@@ in chat, @@OWNER@@'s reply on a brief item, or a scheduled run.
+  Reading and answering are not actions, and a skill's own bookkeeping (the brief, `Now.md`,
+  `## Learned`) is not logged. The log is append only: a mistake gets a new line, not an edit.
 - When you notice drift between this file and the vault, propose the smallest edit to the
   wrong one in the same session. Never silently adapt and leave the doc behind.
 - @@MEMORY_RULE@@

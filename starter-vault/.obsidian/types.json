@@ -11,8 +11,8 @@
     "source": "text",
     "published": "date",
     "tags": "tags",
-    "aliases": "aliases",
     "cssclasses": "multitext",
+    "aliases": "aliases",
     "modified": "date"
   }
 }

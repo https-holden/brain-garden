@@ -18,6 +18,18 @@ change is recorded in `Decisions.md` in the same session.
   a template, a Base, and a row in both tables below).
 - Approval is by numbered list. The owner skips or edits by number, the rest is applied. Git
   is the undo.
+- **Say how before you do.** For any non-trivial task (more than one step, more than one note
+  touched, anything that leaves the vault, or anything you have not done here before), first
+  say in a few lines how you would solve it: the steps, what changes, and the choice you made
+  where there was one. Then wait for a go. A lookup, an answer or one obvious edit needs no
+  plan.
+- **Log every action.** Everything done on the owner's behalf (a note made, edited or moved,
+  something brought in, a message drafted or sent, an event or task made in a connected tool)
+  gets one line appended to `## Actions` in today's `Daily/YYYY-MM-DD.md`:
+  `- YYYY-MM-DD HH:MM What was done, with a [[link]]. Why: the reason. Chose: any choice made. Asked by: who, and where.`
+  "Asked by" is the owner in chat, the owner's reply on a brief item, or a scheduled run.
+  Reading and answering are not actions, and a skill's own bookkeeping (the brief, `Now.md`,
+  `## Learned`) is not logged. The log is append only: a mistake gets a new line, not an edit.
 - When you notice drift between this file and the vault, propose the smallest edit to the
   wrong one in the same session. Never silently adapt and leave the doc behind.
 - Three memory tiers. Short-term: `Daily/` (when present), the raw log of one day, never rewritten after it. Mid-term: `Now.md`, what is in flight (Goals, Active, Waiting on, Recently done, Open questions), every bullet ending with the date it last moved; a bullet that settles into a fact becomes a note and the bullet links it. Long-term: the kind folders.
@@ -77,7 +89,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | References | Reference Template | References.base | `categories`, `created`, `author`, `url`, `rating` | the thing's own title, exactly |
 | People | Person Template | People.base | `categories`, `created`, `org`, `role`, `source` | the person's name, never a role (qualify in parentheses when two share one) |
 | Clippings | Clipping Template | Clippings.base | `categories`, `author`, `url`, `created`, `published` | the page's own title |
-| Daily | Daily Note Template | Daily.base | `tags` | `YYYY-MM-DD` |
+| Daily | Daily Note Template | Daily.base | `tags`, `cssclasses` | `YYYY-MM-DD` |
 
 Adding a kind (the loop): check first that it is not just a `type` value or a view on an
 existing kind. If it really is new: the folder, `Templates/<Kind> Template.md` carrying every
@@ -118,14 +130,22 @@ written into one of the owner's notes.
 
 ## The daily loop
 
-Two skills keep the three memory tiers moving, and both read connected tools read only:
+Three skills keep the three memory tiers moving. The morning and evening ones read connected
+tools read only; `run-brief` acts only on what the owner replied:
 
 - `start-of-day` (morning): reads `Now.md`, yesterday's note and today's calendar, email and
-  chat if connected, and writes the `## Brief` checklist into `Daily/YYYY-MM-DD.md`.
-- `end-of-day` (evening): reads the day's ticks and notes and what moved, proposes new or
-  corrected notes as one numbered list, writes `## Learned`, rewrites `Now.md`, runs the lint.
+  chat if connected, and writes the `## Brief` checklist into `Daily/YYYY-MM-DD.md`. Each item
+  is sorted Green (Claude can just do it), Yellow (Claude offers lettered options) or Red
+  (new, or not undoable: Claude will not guess), and gets an indented `**Reply:**` card.
+- `run-brief` (any time, "run my replies"): does only the items whose card has a reply (`go`,
+  a letter, or a short instruction), writes a `Ran HH:MM:` line under each, and logs every
+  action under `## Actions`. Items without a reply wait for tomorrow and are never chased.
+- `end-of-day` (evening): reads the day's ticks, replies, notes and `## Actions`, proposes new
+  or corrected notes as one numbered list, writes `## Learned`, rewrites `Now.md`, runs the
+  lint.
 
-A daily note is never rewritten after its day, except its `## Learned` that evening.
+A daily note is never rewritten after its day, except its `## Learned` that evening. Reply
+cards are the owner's: only `run-brief` writes in them, and only its `Ran` lines.
 
 ## Keeping the documentation honest
 

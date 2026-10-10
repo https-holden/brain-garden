@@ -52,7 +52,7 @@ the opposite of atrophy. The full story: [guides/how-it-works.md](guides/how-it-
 | Kinds of note | Notes, References, People, Clippings, Daily | Knowledge, Playbooks, People, Meetings, Clippings, Daily |
 | Always | `Home.md`, `Readme.md`, `CLAUDE.md` (the rules for any AI), `Decisions.md`, `Me.md`, `Now.md`, `Sources.md`, topic pages, one template and one table (Base) per kind | same |
 | Tools in `bin/` | `lint.py` (the vault checks itself), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
-| Claude skills | `start-of-day`, `end-of-day`, `file-clippings`, `harvest`, `prune`, `kepano-method` | same |
+| Claude skills | `start-of-day`, `run-brief`, `end-of-day`, `file-clippings`, `harvest`, `prune`, `kepano-method` | same |
 
 The structure follows Steph Ango's method ([How I use Obsidian](https://stephango.com/vault)):
 few folders, a `categories` property with links for topics, a template and a Base per kind. It
@@ -65,9 +65,18 @@ python3 setup/build_vault.py --preset personal --dest ~/Documents/Obsidian/sam-b
 ```
 
 `--preset work` for the work shape, `--kinds A,B,C --working-memory --me` to choose your own,
-`--plugins home-button,manual-modified,resting-view,sticky-bullets` for the four small
-home-made Obsidian plugins, `--dry-run` to see the file list first. `--help` lists every flag.
-Usually you never run this yourself: `setup/mac.sh` and `setup/windows.ps1` do.
+`--plugins` with any of the small home-made Obsidian plugins below (comma separated),
+`--dry-run` to see the file list first. `--help` lists every flag. Usually you never run this
+yourself: `setup/mac.sh` and `setup/windows.ps1` do.
+
+| Plugin | What it does |
+|---|---|
+| `auto-alias` | Write `[[Sam (neighbour)\|Sam]]` once and `[[Sam]]` finds that note from then on: the display text is added to the note's `aliases`, and a note that does not exist yet is created from its folder's template. `[[Sam {neighbour}]]` is shorthand for the same link. Clippings are left alone. |
+| `home-button` | A home icon at the top of the ribbon that opens `Home.md`. |
+| `manual-modified` | A `modified` date that only changes when you type in a note yourself, not when a tool edits it. |
+| `response-cards` | In any note with `cssclasses: [workbook]` (daily notes have it), each indented `**Reply:**` or `**Response:**` under a checkbox becomes a card you write in, and ticked items fold away. Made for the brief's reply cards, and good for workbooks and courses. |
+| `resting-view` | Notes open rendered, with no cursor, until you click into the text. |
+| `sticky-bullets` | A bullet's parents stay pinned at the top while you write deep in a long list. |
 
 ## What is in this repo
 

@@ -138,9 +138,9 @@ body.ptm-dim-unfocused .cm-editor .cm-line.sticky-bullets-parent {
   text-decoration: line-through;
 }
 
-/* Step work notes fold a ticked question but keep it readable (it gets reread with a sponsor);
+/* Workbook notes (response-cards) fold a ticked item but keep it readable, since it gets reread;
    the pinned row matches: no strikethrough, no fading. */
-.step-work .cm-editor > .sticky-bullets .sticky-bullets-row.is-checked .sticky-bullets-text {
+.workbook .cm-editor > .sticky-bullets .sticky-bullets-row.is-checked .sticky-bullets-text {
   color: inherit;
   text-decoration: none;
 }

@@ -1,0 +1,9 @@
+{
+  "id": "auto-alias",
+  "name": "Auto Alias",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "When you write [[Note|Display text]], adds the display text to that note's `aliases` property so the same name resolves next time you type it. A link to a note that does not exist yet creates it. [[Name {context}]] is shorthand for [[Name (context)|Name]].",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

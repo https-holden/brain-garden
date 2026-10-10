@@ -37,7 +37,8 @@ import sys
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))  # the repo
 ASSETS = os.path.join(SKILL_DIR, "template")
 TEXT_EXT = {".md", ".base", ".json", ".css", ".py", ".js", ".txt", ".canvas", ""}
-KNOWN_PLUGINS = ["home-button", "manual-modified", "resting-view", "sticky-bullets"]
+KNOWN_PLUGINS = ["auto-alias", "home-button", "manual-modified", "response-cards", "resting-view",
+                 "sticky-bullets"]
 
 # Obsidian names a vault by the last segment of its path, and nothing else.
 # A folder called `vault` is "vault" in the vault switcher, beside any other.
@@ -123,8 +124,9 @@ KINDS = {
         holds="`YYYY-MM-DD`, the raw log of one day. Never rewritten after the day.",
         nots="Knowledge (copy it out to its own note and link back).",
         title="`YYYY-MM-DD`",
-        props=[("tags", "\n  - daily")], views=[("Recent days", None, 14)], home="Recent days",
-        sort="file.name", body="## Brief\n\n## Notes\n\n## Learned\n\n"),
+        props=[("tags", "\n  - daily"), ("cssclasses", "\n  - workbook")],
+        views=[("Recent days", None, 14)], home="Recent days",
+        sort="file.name", body="## Brief\n\n## Notes\n\n## Actions\n\n## Learned\n\n"),
 }
 
 # The two second brains the seed was distilled from, as a set of flags. A preset
@@ -164,7 +166,7 @@ def kind_template(spec):
 
 
 def kind_base(folder, spec):
-    cols = [k for k, _ in spec["props"] if k != "tags"]
+    cols = [k for k, _ in spec["props"] if k not in ("tags", "cssclasses")]
     sort = spec.get("sort", "created")
 
     def view(name, status=None, limit=None):
@@ -364,12 +366,19 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     tokens = dict(tokens, **extra)
     ingest = "Clippings" in kinds
     daily = working_memory and "Daily" in kinds
+    # The action log: one line per thing done on the owner's behalf, in a plain file in the
+    # vault (a person working alone has no team channel to post it in).
+    log_in_daily = "Daily" in kinds
     tokens.update(
+        ACTION_LOG=("`## Actions` in today's `Daily/YYYY-MM-DD.md`" if log_in_daily
+                    else "`Actions.md`"),
         ME_RULE=section("claude-me", tokens) if me else "",
         ME_ROW=("| `Me.md` | Who the owner is, for any AI: purpose, sources, tools, what is "
                 "private. | Content. |\n" if me else "") + (
                 "| `Sources.md` | Where material comes from: how, cadence, last pulled, keep or not. | "
-                "Notes. |\n" if ingest else ""),
+                "Notes. |\n" if ingest else "") + (
+                "" if log_in_daily else "| `Actions.md` | The action log: one dated line per thing "
+                "done on the owner's behalf. | Plans, notes. |\n"),
         BIN_EXTRA=(", `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them)"
                    if ingest else ""),
         EXTRA_SECTIONS="".join(section(n, tokens) + "\n" for n, on in
@@ -385,6 +394,9 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     if me:
         with open(os.path.join(ASSETS, "optional", "Me.md"), encoding="utf-8") as fh:
             seeder.write(os.path.join(dest, "Me.md"), sub(fh.read(), tokens))
+    if not log_in_daily:
+        with open(os.path.join(ASSETS, "optional", "Actions.md"), encoding="utf-8") as fh:
+            seeder.write(os.path.join(dest, "Actions.md"), sub(fh.read(), tokens))
     for folder in kinds:
         spec = kind_spec(folder)
         seeder.write(os.path.join(dest, folder, ".gitkeep"), "")
@@ -453,7 +465,8 @@ def main():
     ap.add_argument("--plugins", default="", help="bundled home-made plugins to install: " + ", ".join(KNOWN_PLUGINS))
     ap.add_argument("--accent", help="accent colour as #rrggbb")
     ap.add_argument("--working-memory", action="store_true",
-                    help="add Now.md (and, with a Daily kind, the start-of-day and end-of-day skills)")
+                    help="add Now.md (and, with a Daily kind, the start-of-day, run-brief and "
+                         "end-of-day skills)")
     ap.add_argument("--me", action="store_true", help="add Me.md, who the owner is, for any AI")
     ap.add_argument("--date", help="the date written into the vault (default: today)")
     ap.add_argument("--dry-run", action="store_true")

@@ -13,6 +13,8 @@ Warnings (exit 0):
   - a draft older than draft_max_days
   - a Categories/ page that no note uses
   - a Now.md bullet with no date, or one older than now_max_days
+  - an action log line (a bullet under `## Actions`) that does not start with
+    `YYYY-MM-DD HH:MM` or is missing `Why:` or `Asked by:`
 
 The schema is the templates: Templates/<Kind> Template.md says which properties a
 kind carries, so a template edit is a schema edit. bin/vault.json maps each kind
@@ -32,6 +34,7 @@ KINDS = CONFIG["kinds"]
 SKIP = {".git", ".obsidian", ".trash", ".claude", "bin", "node_modules", "__pycache__"}
 LINK = re.compile(r"\[\[([^\]|#]+)")
 DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
 DASHES = ("–", "—")
 
 errors, warnings = [], []
@@ -107,6 +110,17 @@ def main():
             age = (today - datetime.strptime(fm["created"][:10], "%Y-%m-%d").date()).days
             if age > CONFIG.get("draft_max_days", 14):
                 warnings.append("%s: draft for %d days" % (rel, age))
+
+    for rel, (_, body, _) in notes.items():
+        section = ""
+        for line in body.split("\n"):
+            if line.startswith("#"):
+                section = line.lstrip("#").strip()
+            elif section == "Actions" and line.startswith("- "):
+                if not ACTION.match(line):
+                    warnings.append("%s: action log line does not start with YYYY-MM-DD HH:MM: %s" % (rel, line[2:50]))
+                elif "Why:" not in line or "Asked by:" not in line:
+                    warnings.append("%s: action log line is missing Why: or Asked by: %s" % (rel, line[2:50]))
 
     for topic in sorted(topics - used):
         warnings.append("Categories/%s.md: no note uses this topic" % topic)

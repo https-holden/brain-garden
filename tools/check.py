@@ -5,13 +5,16 @@
 
 Builds both presets and a custom vault into a temporary folder, runs each
 vault's own check, pushes sample files through bin/ingest.py, round-trips a
-fake chat answer through bin/librarian.py --apply, checks starter-vault/ is
-what the seed makes today, and scans this repo's own docs for en and em
-dashes. Prints one line per check and exits 1 if any failed.
+fake chat answer through bin/librarian.py --apply, checks the daily loop's
+reply cards and action log, installs every bundled plugin, checks
+starter-vault/ is what the seed makes today, and scans this repo's own docs
+for en and em dashes. Prints one line per check and exits 1 if any failed.
 """
 import base64
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -169,6 +172,84 @@ def prune_round_trip(vault, fx):
           and "| New place |" in text, text)
 
 
+def daily_loop(tmp):
+    """The brief's reply cards, the action log, the standing rules, and every skill's header."""
+    vault = os.path.join(tmp, "sam-brain")
+    daily_tpl = open(os.path.join(vault, "Templates", "Daily Note Template.md"), encoding="utf-8").read()
+    check("daily template has ## Actions and opts in to reply cards",
+          "## Actions" in daily_tpl and "  - workbook" in daily_tpl, daily_tpl)
+    rules = open(os.path.join(vault, "CLAUDE.md"), encoding="utf-8").read()
+    check("CLAUDE.md: say how before you do, and log every action to the daily note",
+          "Say how before you do" in rules and "`## Actions` in today's `Daily/" in rules, rules[:1500])
+    other = os.path.join(tmp, "kinds-brain")
+    rules = open(os.path.join(other, "CLAUDE.md"), encoding="utf-8").read()
+    check("a vault without Daily/ logs actions to Actions.md",
+          os.path.exists(os.path.join(other, "Actions.md")) and "appended to `Actions.md`" in rules, rules[:1500])
+
+    skills = os.path.join(vault, ".claude", "skills")
+    for name in sorted(os.listdir(skills)):
+        text = open(os.path.join(skills, name, "SKILL.md"), encoding="utf-8").read()
+        head = text.split("\n---", 1)[0]
+        check("skill %s: frontmatter names it and describes it" % name,
+              re.search(r"^name: %s$" % re.escape(name), head, re.M) is not None
+              and re.search(r"^description: \S", head, re.M) is not None, head)
+    check("run-brief ships with the daily loop", os.path.isdir(os.path.join(skills, "run-brief")))
+
+    # The brief's example must be what the response-cards plugin draws as a card.
+    js = open(os.path.join(ROOT, "template", "plugins", "response-cards", "main.js"), encoding="utf-8").read()
+    label = re.compile(re.search(r"const LABEL = /(.+)/;", js).group(1))
+    brief = open(os.path.join(skills, "start-of-day", "SKILL.md"), encoding="utf-8").read()
+    example = "\n".join(re.findall(r"```markdown\n(.*?)```", brief, re.S))
+    cards = [ln for ln in example.split("\n") if "**Reply:**" in ln]
+    check("start-of-day's reply cards match the response-cards plugin",
+          cards and all(label.match(ln) for ln in cards), "\n".join(cards))
+
+    today = os.path.join(vault, "Daily", "2026-10-10.md")
+    with open(today, "w", encoding="utf-8") as fh:
+        fh.write(daily_tpl.replace("## Actions\n", "## Actions\n\n"
+                 "- 2026-10-10 09:40 Filed 6 clippings. Why: brief item 2. Chose: two topics. Asked by: Sam's reply on brief item 2.\n"
+                 "- 09:41 Drafted a reply to Bob. Why: asked. Asked by: Sam in chat.\n"
+                 "- 2026-10-10 09:42 Moved a note. Asked by: Sam in chat.\n"))
+    code, out = run([PY, os.path.join(vault, "bin", "lint.py")], cwd=vault)
+    check("lint: warns on action log lines with no time or no Why:",
+          code == 0 and out.count("action log line") == 2 and "Filed 6" not in out, out)
+    with open(os.path.join(other, "Actions.md"), "a", encoding="utf-8") as fh:
+        fh.write("- 2026-10-10 09:40 Made [[Sam]]. Why: a new person. Asked by: Sam in chat.\n")
+    code, out = run([PY, os.path.join(other, "bin", "lint.py")], cwd=other)
+    check("lint: a good Actions.md passes", code == 0 and "action log line" not in out, out)
+
+
+def plugins(tmp):
+    """Every bundled plugin is known to the builder, documented, installs, and parses."""
+    sys.path.insert(0, os.path.join(ROOT, "setup"))
+    import build_vault
+    have = sorted(os.listdir(os.path.join(ROOT, "template", "plugins")))
+    check("KNOWN_PLUGINS is every folder in template/plugins/", sorted(build_vault.KNOWN_PLUGINS) == have,
+          "%s vs %s" % (sorted(build_vault.KNOWN_PLUGINS), have))
+    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    missing = [p for p in have if "| `%s` |" % p not in readme]
+    check("README.md documents every plugin", not missing, ", ".join(missing))
+    for pid in have:
+        manifest = json.load(open(os.path.join(ROOT, "template", "plugins", pid, "manifest.json"), encoding="utf-8"))
+        check("plugin %s: manifest id matches its folder" % pid, manifest.get("id") == pid, str(manifest))
+    code, out = seed(tmp, "--dest", "plugin-brain", "--name", "Plugin Brain", "--owner", "Sam",
+                     "--plugins", ",".join(have))
+    vault = os.path.join(tmp, "plugin-brain")
+    listed = json.load(open(os.path.join(vault, ".obsidian", "community-plugins.json"), encoding="utf-8")) if code == 0 else []
+    check("--plugins installs and enables every bundled plugin", code == 0 and listed == have and all(
+        os.path.exists(os.path.join(vault, ".obsidian", "plugins", p, "main.js")) for p in have), out)
+    node = shutil.which("node")
+    if node:
+        bad = []
+        for pid in have:
+            code, out = run([node, "--check", os.path.join(ROOT, "template", "plugins", pid, "main.js")])
+            if code:
+                bad.append("%s: %s" % (pid, out))
+        check("plugins parse as JavaScript (node --check)", not bad, "\n".join(bad))
+    else:
+        print("skip  plugins parse as JavaScript (no node on this machine)")
+
+
 def main():
     for root, _, files in os.walk(ROOT):
         if "/.git" in root:
@@ -208,6 +289,8 @@ def main():
         fixtures(fx)
         ingest_round_trip(os.path.join(tmp, "sam-brain"), fx)
         prune_round_trip(os.path.join(tmp, "sam-work-brain"), fx)
+        daily_loop(tmp)
+        plugins(tmp)
 
     code, out = run([PY, os.path.join(ROOT, "tools", "build_starter.py"), "--check"])
     check("starter-vault/ matches the seed", code == 0, out)
