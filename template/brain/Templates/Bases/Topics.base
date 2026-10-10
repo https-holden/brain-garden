@@ -1,0 +1,43 @@
+filters:
+  and:
+    - '!file.inFolder("Templates")'
+    - '!file.inFolder("Categories")'
+properties:
+  file.name:
+    displayName: Note
+  file.folder:
+    displayName: Kind
+  note.status:
+    displayName: Status
+  note.created:
+    displayName: Created
+views:
+  - type: table
+    name: In this topic
+    filters:
+      and:
+        - '!note.categories.isEmpty()'
+        - list(note.categories).contains(this)
+    order:
+      - file.name
+      - file.folder
+      - status
+      - created
+    sort:
+      - property: file.folder
+        direction: ASC
+      - property: created
+        direction: DESC
+  - type: table
+    name: Mentions
+    filters:
+      and:
+        - file.hasLink(this)
+        - file.path != this.file.path
+    order:
+      - file.name
+      - file.folder
+      - created
+    sort:
+      - property: created
+        direction: DESC

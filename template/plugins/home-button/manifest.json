@@ -1,0 +1,9 @@
+{
+  "id": "home-button",
+  "name": "Home Button",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Home icon at the top of the ribbon that opens the Home note. Cmd/Ctrl-click opens it in a new tab.",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

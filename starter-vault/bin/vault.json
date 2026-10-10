@@ -1,0 +1,27 @@
+{
+  "kinds": {
+    "Notes": {
+      "template": "Note Template.md"
+    },
+    "References": {
+      "template": "Reference Template.md"
+    },
+    "People": {
+      "template": "Person Template.md"
+    },
+    "Clippings": {
+      "template": "Clipping Template.md"
+    },
+    "Daily": {
+      "template": "Daily Note Template.md"
+    }
+  },
+  "draft_max_days": 14,
+  "now_max_days": 14,
+  "dash_exempt": [
+    ".obsidian/",
+    ".git/",
+    ".claude/",
+    "bin/"
+  ]
+}

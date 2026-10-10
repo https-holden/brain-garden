@@ -1,0 +1,17 @@
+filters:
+  and:
+    - file.inFolder("Notes")
+properties:
+  file.name:
+    displayName: Note
+views:
+  - type: table
+    name: All notes
+    order:
+      - file.name
+      - categories
+      - created
+      - topics
+    sort:
+      - property: created
+        direction: DESC

@@ -1,0 +1,9 @@
+{
+  "id": "manual-modified",
+  "name": "Manual Modified",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Keeps a `modified` date property that only changes when you type in a note yourself. Link renames, templates, importers and other automated edits do not count.",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

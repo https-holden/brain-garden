@@ -1,0 +1,22 @@
+filters:
+  and:
+    - file.inFolder("Daily")
+properties:
+  file.name:
+    displayName: Daily note
+views:
+  - type: table
+    name: All daily
+    order:
+      - file.name
+    sort:
+      - property: file.name
+        direction: DESC
+  - type: table
+    name: Recent days
+    order:
+      - file.name
+    sort:
+      - property: file.name
+        direction: DESC
+    limit: 14

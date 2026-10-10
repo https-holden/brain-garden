@@ -1,0 +1,9 @@
+{
+  "id": "sticky-bullets",
+  "name": "Sticky Bullets",
+  "version": "1.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Sticky scroll for lists: when a bullet's parents scroll off the top of the editor, they stay pinned there as single-line rows, so you can always see what you are writing under.",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

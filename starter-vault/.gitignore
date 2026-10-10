@@ -1,0 +1,15 @@
+# Obsidian state that changes constantly and is per device
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/workspace/
+.obsidian/cache/
+.trash/
+.DS_Store
+
+# Claude Code local permissions
+.claude/settings.local.json
+
+# Script logs and local secrets never land in git
+bin/*.log
+bin/.env
+__pycache__/

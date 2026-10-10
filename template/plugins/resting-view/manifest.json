@@ -1,0 +1,9 @@
+{
+  "id": "resting-view",
+  "name": "Resting View",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Notes open at rest, Notion-style: everything rendered, no cursor. Click into text to edit right there; click the side margins (or press Esc) to let go again. Ticking checkboxes and pressing buttons never puts you into editing.",
+  "author": "Holden",
+  "isDesktopOnly": false
+}

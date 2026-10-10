@@ -1,0 +1,18 @@
+{
+  "types": {
+    "categories": "multitext",
+    "created": "date",
+    "topics": "multitext",
+    "author": "multitext",
+    "url": "text",
+    "rating": "number",
+    "org": "multitext",
+    "role": "text",
+    "source": "text",
+    "published": "date",
+    "tags": "tags",
+    "aliases": "aliases",
+    "cssclasses": "multitext",
+    "modified": "date"
+  }
+}

@@ -1,0 +1,19 @@
+filters:
+  and:
+    - file.inFolder("References")
+properties:
+  file.name:
+    displayName: Reference
+views:
+  - type: table
+    name: All references
+    order:
+      - file.name
+      - categories
+      - created
+      - author
+      - url
+      - rating
+    sort:
+      - property: created
+        direction: DESC

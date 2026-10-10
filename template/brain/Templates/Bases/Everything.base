@@ -1,0 +1,23 @@
+formulas:
+  Date: if(created,created,if(start,start))
+views:
+  - type: table
+    name: All files
+    order:
+      - file.name
+      - file.folder
+      - file.mtime
+      - file.ext
+    sort:
+      - property: file.mtime
+        direction: DESC
+  - type: list
+    name: Topics
+    filters:
+      and:
+        - file.inFolder("Categories")
+    order:
+      - file.name
+    sort:
+      - property: file.name
+        direction: ASC

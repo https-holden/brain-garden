@@ -1,0 +1,146 @@
+/* Pinned parent bullets at the top of the editor. Lives inside .cm-editor, so it follows the
+   note into ProZen fullscreen. Same paper as the page, a soft fade instead of a border. */
+.cm-editor > .sticky-bullets {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: var(--background-primary);
+  padding: 4px 0 2px;
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  line-height: var(--line-height-normal);
+}
+.cm-editor > .sticky-bullets::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 14px;
+  /* same paint as the rows, faded out with a mask so whatever the rows show (plain paper, or
+     paper + vignette in zen) continues seamlessly */
+  background: inherit;
+  -webkit-mask-image: linear-gradient(#000, transparent);
+  mask-image: linear-gradient(#000, transparent);
+  pointer-events: none;
+}
+
+/* ProZen paints its side vignette as the background of the view, underneath the editor, so an
+   opaque strip would punch a bright bar through it. Repaint the same gradient on top of the
+   paper; the strip spans the same width as the view, so the two line up. */
+.vignette-linear .cm-editor > .sticky-bullets {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, var(--vignette-opacity)) 0%,
+      rgba(0, 0, 0, 0) var(--vignette-scale-linear),
+      rgba(0, 0, 0, 0) calc(100% - var(--vignette-scale-linear)),
+      rgba(0, 0, 0, var(--vignette-opacity)) 100%
+    ),
+    var(--background-primary);
+}
+
+.sticky-bullets-row {
+  position: relative;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.sticky-bullets-row:hover {
+  color: var(--text-normal);
+}
+.sticky-bullets-link {
+  color: var(--link-color);
+  opacity: 0.8;
+}
+
+/* marker sits just left of where the bullet's text starts, like the real list marker */
+.sticky-bullets-marker {
+  position: absolute;
+  top: 2px;
+  width: 3em;
+  margin-left: calc(-3em - 0.4em);
+  text-align: right;
+  color: var(--list-marker-color, var(--text-faint));
+}
+.sticky-bullets-dot {
+  display: inline-block;
+  width: 0.3em;
+  height: 0.3em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+  margin-bottom: 0.15em;
+}
+
+/* Zen (ProZen fullscreen + dimmed paragraphs): sit back with the rest of the dimmed text */
+:fullscreen .sticky-bullets-row {
+  opacity: 0.45;
+}
+:fullscreen .sticky-bullets-row:hover {
+  opacity: 0.9;
+}
+
+/* The bullet you are writing under (direct parent of the cursor's line): a soft wash of the accent
+   behind the line, and its marker in full accent, so the eye can jump to it without tracing the
+   indent guide. Same treatment on its pinned row once it has scrolled off. */
+.markdown-source-view .cm-line .sticky-bullets-parent-text {
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 1px 0;
+}
+.markdown-source-view .cm-line.sticky-bullets-parent .list-bullet::after,
+.sticky-bullets-row.is-parent .sticky-bullets-dot {
+  background-color: var(--interactive-accent);
+}
+.markdown-source-view .cm-line.sticky-bullets-parent .list-number,
+.sticky-bullets-row.is-parent .sticky-bullets-marker {
+  color: var(--interactive-accent);
+}
+.sticky-bullets-row.is-parent {
+  color: var(--text-normal);
+}
+.sticky-bullets-row.is-parent .sticky-bullets-text {
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+}
+
+/* Zen: Typewriter Mode dims every line but the active one; keep the parent readable */
+body.ptm-dim-unfocused .cm-editor .cm-line.sticky-bullets-parent {
+  opacity: 0.8 !important;
+}
+:fullscreen .sticky-bullets-row.is-parent {
+  opacity: 0.85;
+}
+
+/* Task rows keep a live checkbox */
+.cm-editor > .sticky-bullets .sticky-bullets-checkbox {
+  position: relative;
+  top: 0.15em;
+  margin: 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.cm-editor > .sticky-bullets .sticky-bullets-row.is-checked .sticky-bullets-text {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+/* Step work notes fold a ticked question but keep it readable (it gets reread with a sponsor);
+   the pinned row matches: no strikethrough, no fading. */
+.step-work .cm-editor > .sticky-bullets .sticky-bullets-row.is-checked .sticky-bullets-text {
+  color: inherit;
+  text-decoration: none;
+}

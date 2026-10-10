@@ -1,0 +1,19 @@
+filters:
+  and:
+    - file.inFolder("Clippings")
+properties:
+  file.name:
+    displayName: Clipping
+views:
+  - type: table
+    name: All clippings
+    order:
+      - file.name
+      - categories
+      - author
+      - url
+      - created
+      - published
+    sort:
+      - property: created
+        direction: DESC

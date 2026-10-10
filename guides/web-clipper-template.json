@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "Second brain clipping",
+  "behavior": "create",
+  "noteNameFormat": "{{title}}",
+  "path": "Clippings",
+  "noteContentFormat": "<!-- ingest:start -->\n{{content}}\n<!-- ingest:end -->\n\n## Notes\n\n- ",
+  "properties": [
+    { "name": "categories", "value": "", "type": "multitext" },
+    { "name": "author", "value": "{{author|split:\", \"|wikilink|join}}", "type": "multitext" },
+    { "name": "url", "value": "{{url}}", "type": "text" },
+    { "name": "created", "value": "{{date|date:\"YYYY-MM-DD\"}}", "type": "date" },
+    { "name": "published", "value": "{{published|date:\"YYYY-MM-DD\"}}", "type": "date" },
+    { "name": "ingested", "value": "{{date|date:\"YYYY-MM-DD\"}}", "type": "date" }
+  ],
+  "triggers": []
+}

@@ -1,0 +1,19 @@
+filters:
+  and:
+    - file.inFolder("People")
+properties:
+  file.name:
+    displayName: Person
+views:
+  - type: table
+    name: All people
+    order:
+      - file.name
+      - categories
+      - created
+      - org
+      - role
+      - source
+    sort:
+      - property: created
+        direction: DESC

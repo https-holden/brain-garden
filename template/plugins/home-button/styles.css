@@ -1,0 +1,4 @@
+/* Pin the home icon to the top of the ribbon regardless of load order */
+.side-dock-actions .home-button-ribbon {
+  order: -1;
+}

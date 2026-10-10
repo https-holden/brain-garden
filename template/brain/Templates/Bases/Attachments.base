@@ -1,0 +1,20 @@
+filters:
+  and:
+    - '!file.ext.containsAny("base", "md", "pdf", "canvas")'
+formulas:
+  links: file.backlinks
+properties:
+  formula.links:
+    displayName: Links
+views:
+  - type: cards
+    name: All images
+    image: file.file
+  - type: table
+    name: Unused attachments
+    filters:
+      and:
+        - formula.links.isEmpty()
+    order:
+      - file.name
+      - formula.links

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 bin/lint.py:*)",
+      "Bash(python3 bin/ingest.py:*)"
+    ]
+  }
+}
