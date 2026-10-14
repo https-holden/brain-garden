@@ -94,6 +94,7 @@ starter-vault/      the personal preset, ready to open (rebuilt by tools/build_s
 guides/             Obsidian basics, bringing things in, harvesting and pruning, the daily
                     loop, backup, sharing, chat prompts, and a Web Clipper template
 tools/              check.py (the test suite) and build_starter.py
+.githooks/          pre-commit runs check.py (git config core.hooksPath .githooks)
 ```
 
 To change what a vault contains, edit `template/`, then run `python3 tools/build_starter.py`
