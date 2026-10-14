@@ -35,6 +35,12 @@ shows what the vault knows. Using ChatGPT? `python3 @@VAULT_PREFIX@@bin/find.py 
 the whole index: save it as a file in your ChatGPT project, beside `CLAUDE.md`, `Rules.md`
 and `Me.md`.
 
+Every lookup leaves a footstep. `python3 @@VAULT_PREFIX@@bin/paths.py` gathers them, with
+Claude Code's own session logs and the git history when there are any, into
+`.paths/report.md`: the notes your AI reads most, what each kind of session reads before it
+starts work, the files near their size budget, and the lookups that keep finding nothing. It
+never changes a note, and the report stays on this computer.
+
 @@README_SECTIONS@@## Keeping it honest
 
 `python3 @@VAULT_PREFIX@@bin/lint.py` checks the vault against its own templates and rules.

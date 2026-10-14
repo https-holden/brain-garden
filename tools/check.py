@@ -8,7 +8,8 @@ vault's own check, pushes sample files through bin/ingest.py, round-trips a
 fake chat answer through bin/librarian.py --apply, checks the daily loop's
 reply cards and action log, checks the CLAUDE.md and Rules.md split and the
 size budgets lint warns on, checks every hub opens with `## Start here` and
-lint warns on a busy hub with no plain link, installs every bundled plugin, checks
+lint warns on a busy hub with no plain link, runs bin/paths.py over the fixture
+transcripts in tools/fixtures/paths/, installs every bundled plugin, checks
 starter-vault/ is what the seed makes today, scans this repo's own docs
 for en and em dashes, and fails when a tracked file names a term from the
 git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
@@ -657,6 +658,191 @@ def budgets(tmp):
     check("no template file sends the AI to CLAUDE.md for the detail that moved to Rules.md", not stale, "\n".join(stale))
 
 
+def paths_ledger(tmp):
+    """bin/paths.py: footsteps from the fixture transcripts (two config folders), the find log and git, into
+    a git-ignored ledger and a one-screen report; a second run reads nothing; no read source degrades; a bed is silent."""
+    tmp = os.path.realpath(tmp)  # Claude Code names a project folder after the physical path
+    code, out = seed(tmp, "--preset", "work", "--dest", "paths-brain", "--name", "Paths Brain", "--owner", "Sam",
+                     "--date", "2026-10-01")
+    check("build a vault for the paths checks", code == 0, out)
+    vault = os.path.join(tmp, "paths-brain")
+    sleep, coffee = "Knowledge/Sleep comes before focus.md", "Knowledge/Coffee after noon hurts sleep.md"
+    claim = 'created: 2026-10-01\nsource: ""\ncategories:\n  - "[[Sleep]]"\n'
+    for rel, text in ((sleep, claim + "status: draft"), (coffee, claim + "status: verified"),
+                      ("Playbooks/Wind down at night.md", claim + "status: draft"),
+                      ("People/Sam.md", "categories: []\ncreated: 2026-10-01\norg: []\nrole: \nsource: "),
+                      ("Categories/Sleep.md", "tags:\n  - categories"),
+                      ("Daily/2026-10-10.md", "tags:\n  - daily")):
+        os.makedirs(os.path.dirname(os.path.join(vault, rel)), exist_ok=True)
+        with open(os.path.join(vault, rel), "w", encoding="utf-8") as fh:
+            fh.write("---\n%s\n---\n\nA line of text.\n" % text)
+    fx = os.path.join(ROOT, "tools", "fixtures", "paths")
+    shutil.copy(os.path.join(fx, "find.log"), os.path.join(vault, ".paths", "find.log"))
+    home = os.path.join(tmp, "paths-home")
+    slug = re.sub(r"[^A-Za-z0-9]", "-", vault)
+    for src, config in (("claude", ".claude"), ("claude-work", ".claude-work")):
+        for root, _, files in os.walk(os.path.join(fx, src)):
+            for fn in files:
+                rel = os.path.relpath(os.path.join(root, fn), os.path.join(fx, src))
+                dest = os.path.join(home, config, "projects", slug, rel)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as fh:
+                    fh.write(read(os.path.join(root, fn)).replace("__VAULT__", json.dumps(vault)[1:-1]))
+    env = dict(no_git_env(), HOME=home)
+    env.pop("CLAUDE_CONFIG_DIR", None)
+    git = shutil.which("git")
+    if git:
+        def commit(message, day):
+            when = "%sT12:00:00+00:00" % day
+            run([git, "add", "-A"], cwd=vault, env=env)
+            run([git, "-c", "user.name=Sam", "-c", "user.email=sam@example.com", "-c", "commit.gpgsign=false",
+                 "commit", "-q", "--no-verify", "-m", message], cwd=vault,
+                env=dict(env, GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when))
+        run([git, "init", "-q"], cwd=vault, env=env)
+        commit("Plant", "2026-10-01")
+        with open(os.path.join(vault, sleep), "a", encoding="utf-8") as fh:
+            fh.write("Another line.\n")
+        commit("Edit a claim", "2026-10-11")
+
+    def files():
+        out = {}
+        for root, dirs, names in os.walk(vault):
+            dirs[:] = [d for d in dirs if d != ".git"]
+            for fn in names:
+                with open(os.path.join(root, fn), "rb") as fh:
+                    out[os.path.relpath(os.path.join(root, fn), vault)] = fh.read()
+        return out
+
+    before = files()
+    paths = [PY, os.path.join("bin", "paths.py"), "--today", "2026-10-14"]
+    code, out = run(paths, cwd=vault, env=env)
+    ledger_path, report_path = os.path.join(vault, ".paths", "ledger.json"), os.path.join(vault, ".paths", "report.md")
+    check("paths: a refresh reads the five fixture transcripts and exits 0",
+          code == 0 and "5 transcripts read" in out and os.path.exists(ledger_path), out)
+    try:
+        ledger = json.loads(read(ledger_path))
+    except ValueError:
+        ledger = {}
+    steps = ledger.get("paths", {})
+
+    def count(rel, kind):
+        return sum(steps.get(rel, {}).get(kind, {}).values())
+
+    def last(rel, kind):
+        return max(steps.get(rel, {}).get(kind, {}) or [""])
+
+    got = {rel: (count(rel, "read"), last(rel, "read")) for rel in
+           ("CLAUDE.md", sleep, coffee, "Now.md", "People/Sam.md", "Playbooks/Wind down at night.md", "Knowledge/",
+            ".claude/skills/start-of-day/SKILL.md", ".claude/skills/end-of-day/SKILL.md")}
+    want = {"CLAUDE.md": (4, "2026-10-13"), sleep: (4, "2026-10-13"), coffee: (1, "2026-10-11"),
+            "Now.md": (2, "2026-10-13"), "People/Sam.md": (2, "2026-10-12"),
+            "Playbooks/Wind down at night.md": (1, "2026-10-12"), "Knowledge/": (2, "2026-10-12"),
+            ".claude/skills/start-of-day/SKILL.md": (2, "2026-10-13"),
+            ".claude/skills/end-of-day/SKILL.md": (1, "2026-10-11")}
+    check("paths: reads per file and their last dates match the fixtures (Read, Bash cat, grep hits, a folder "
+          "listing, a Skill call, a slash command, CLAUDE.md once per session, a subagent with its parent)",
+          got == want, "\n".join("%s: got %s, want %s" % (k, got[k], want[k]) for k in want if got[k] != want[k]))
+    check("paths: writes from Edit, Write and a Bash redirect; a file that does not exist now is left out",
+          count("Now.md", "write") == 2 and last("Now.md", "write") == "2026-10-12"
+          and count("Daily/2026-10-10.md", "write") == 1 and "Daily/2026-10-13.md" not in steps, str(steps.get("Now.md")))
+    check("paths: find-log hits are footsteps of kind find",
+          steps.get(sleep, {}).get("find") == {"2026-10-09": 1} and steps.get(coffee, {}).get("find") == {"2026-10-12": 1},
+          "%s\n%s" % (steps.get(sleep), steps.get(coffee)))
+    if git:
+        check("paths: git commits are footsteps of their own kind",
+              steps.get(sleep, {}).get("git") == {"2026-10-01": 1, "2026-10-11": 1}
+              and count("People/Sam.md", "git") == 1, str(steps.get(sleep)))
+    size = {rel: len(read(os.path.join(vault, rel))) for rel in
+            ("CLAUDE.md", "Now.md", sleep, "Playbooks/Wind down at night.md",
+             ".claude/skills/start-of-day/SKILL.md", ".claude/skills/end-of-day/SKILL.md")}
+    start = [size["CLAUDE.md"] + size[".claude/skills/start-of-day/SKILL.md"] + size["Now.md"] + n
+             for n in (size[sleep], 0)]  # the second one read the note only after its first write
+    types = ledger.get("types", {})
+    want_types = {"start-of-day": {"sessions": 2, "fixed_load": round(sum(start) / 2)},
+                  "end-of-day": {"sessions": 1, "fixed_load": size["CLAUDE.md"]
+                                 + size[".claude/skills/end-of-day/SKILL.md"] + size[sleep]},
+                  "misc": {"sessions": 1, "fixed_load": size["CLAUDE.md"] + size["Playbooks/Wind down at night.md"]
+                           + size[sleep]}}
+    check("paths: sessions typed by their first skill or slash command, else misc, with the average fixed load "
+          "(files read whole before the first write or MCP call)", types == want_types,
+          "got  %s\nwant %s" % (types, want_types))
+
+    report = read(report_path)
+    lines = report.split("\n")
+    sections = {s.split("\n", 1)[0]: s for s in report.split("\n## ")}
+    dormant = next((s for h, s in sections.items() if h.startswith("Dormant")), "")
+    signs = next((s for h, s in sections.items() if h.startswith("Signposts")), "")
+    drafts = next((s for h, s in sections.items() if h.startswith("Drafts wanting paving")), "")
+    head = " ".join(lines[:6])
+    check("paths: the report fits one screen and names its sources",
+          len(lines) <= 50 and "Refreshed 2026-10-14" in head and "Last pass: never" in head
+          and "~/.claude," in head and "~/.claude-work" in head and "find log" in head
+          and ("git log" in head or not git), report)
+    check("paths: hot files, fixed load per type, budgets and paved sections are there",
+          re.search(r"^- Knowledge/Sleep comes before focus\.md: 5 reads", report, re.M) is not None
+          and "| start-of-day | 2 |" in report and "| CLAUDE.md |" in report and "9,000" in report
+          and "\n## Paved, waiting for your verify" in report, report)
+    check("paths: dormant notes only as counts per folder, never a name",
+          dormant != "" and ".md" not in dormant and re.search(r"Knowledge \d+ of \d+", dormant) is not None, dormant)
+    check("paths: signposts are the queries that missed twice or more in 30 days",
+          "marmalade" in signs and "jam" not in signs and "tea" not in signs, signs)
+    check("paths: drafts wanting paving are the hot drafts", sleep in drafts and "Wind down" not in drafts, drafts)
+
+    first = read(ledger_path)
+    for root, _, names in os.walk(os.path.join(home)):
+        for fn in names:  # same size and time, junk inside: a run that opened one would change the ledger
+            path = os.path.join(root, fn)
+            st = os.stat(path)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("x" * st.st_size)
+            os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
+    code, out = run(paths, cwd=vault, env=env)
+    check("paths: a second run with nothing new reads no transcript and leaves the ledger byte for byte",
+          code == 0 and "0 transcripts read" in out and read(ledger_path) == first, out)
+    after = files()
+    added = sorted(set(after) - set(before))
+    changed = sorted(p for p in before if after.get(p) != before[p])
+    check("paths: writes only .paths/ledger.json and .paths/report.md; no note made, edited or moved",
+          added == [os.path.join(".paths", "ledger.json"), os.path.join(".paths", "report.md")] and not changed,
+          "added %s, changed %s" % (added, changed))
+    if git:
+        ignored = {p: run([git, "check-ignore", "-q", p], cwd=vault, env=env)[0] == 0
+                   for p in (".paths/ledger.json", ".paths/report.md", ".paths/index.txt")}
+        check("paths: the ledger and the live report are git-ignored, the index is not",
+              ignored == {".paths/ledger.json": True, ".paths/report.md": True, ".paths/index.txt": False}, str(ignored))
+    else:
+        print("skip  paths: git checks (no git on this machine)")
+
+    eod = read(os.path.join(vault, ".claude", "skills", "end-of-day", "SKILL.md"))
+    rules = read(os.path.join(vault, "Rules.md")).split("## Conventions", 1)[-1]
+    settings = read(os.path.join(vault, ".claude", "settings.json"))
+    missing = [w for w in ("**Footstep**", "**Path**", "**Hot**", "**Dormant**", "**Fixed load**") if w not in rules]
+    check("paths: end-of-day refreshes after lint, Rules.md conventions carry the vocabulary, settings allow it",
+          "python3 bin/paths.py" in eod.split("bin/lint.py", 1)[-1] and not missing
+          and "Bash(python3 bin/paths.py:*)" in settings, "missing %s" % missing)
+
+    code, out = seed(tmp, "--preset", "personal", "--dest", "bare-brain", "--name", "Bare Brain", "--owner", "Sam")
+    bare = os.path.join(tmp, "bare-brain")
+    empty = os.path.join(tmp, "empty-home")
+    os.makedirs(empty)
+    bare_env = dict(no_git_env(), HOME=empty)
+    bare_env.pop("CLAUDE_CONFIG_DIR", None)
+    code, out = run([PY, os.path.join("bin", "paths.py")], cwd=bare, env=bare_env)
+    report = read(os.path.join(bare, ".paths", "report.md"))
+    check("paths: with no transcripts, no find log and no git the report says reads are not measured, still shows "
+          "budgets, and leaves hot, dormant and fixed load out",
+          code == 0 and "Traceback" not in out and "Reads not measured" in report and "## Size budgets" in report
+          and "| CLAUDE.md |" in report and "## Inbound links" in report and "## Writes" in report
+          and "## Hot" not in report and "## Dormant" not in report and "## Fixed load" not in report, out + report)
+    for fn in ("ledger.json", "report.md"):
+        os.remove(os.path.join(bare, ".paths", fn))
+    with open(os.path.join(bare, ".bed.json"), "w", encoding="utf-8") as fh:
+        fh.write("{}\n")
+    code, out = run([PY, os.path.join("bin", "paths.py")], cwd=bare, env=bare_env)
+    check("paths: silent in a bed checkout", code == 0 and out == ""
+          and not os.path.exists(os.path.join(bare, ".paths", "ledger.json")), out)
+
+
 def sends_to_claude_md(text):
     """Sentences that name CLAUDE.md, not Rules.md, for the vault map, the kinds, adding a kind or the conventions."""
     return [s for s in re.split(r"(?<=[.;])\s+", " ".join(text.split()))
@@ -867,6 +1053,7 @@ def main():
         vault_import(tmp)
         budgets(tmp)
         hubs(tmp)
+        paths_ledger(tmp)
         plugins(tmp)
     recipe_guard()
 

@@ -545,7 +545,8 @@ def main():
     seeder = Seeder(args.dry_run)
 
     seed_brain(seeder, dest, tokens, kinds, args.working_memory, args.me)
-    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix]
+    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix,
+             "Bash(python3 %sbin/paths.py:*)" % prefix]
     if "Clippings" in kinds:
         allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
     merge_settings(seeder, repo_root, allow=allow)

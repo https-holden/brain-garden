@@ -21,7 +21,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `Categories/` | One page per topic in use: `tags: [categories]`, a `## Start here` of plain links, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
-| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets), `find.py` (step 1 of the recipe), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |
+| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |
 | `.obsidian/` | Tracked config, the `vault.css` snippet, any home-made plugins. Document a new plugin in `Readme.md`. | Content. |
 | `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. | Hand edits. |
 
@@ -145,3 +145,11 @@ fact: move detail out to a note or a skill's `references/` and leave a pointer. 
   property that may be missing (`note.x.isEmpty() || ...`): a filter on a missing property is
   false and silently drops the note.
 - Corrections are appended and dated, never edited over the original.
+- **Footstep**: one read, write or lookup hit of a vault file by a session or a find query.
+  `python3 bin/paths.py` collects them, with no AI and no frontmatter, into
+  `.paths/ledger.json` and `.paths/report.md`, both kept on this machine.
+- **Path**: a file's footsteps over a window.
+- **Hot**: three or more reads in 30 days. Reads exclude writes.
+- **Dormant**: no read in 60 days, or never read. Dormant is fine.
+- **Fixed load**: the chars of vault files a session reads before its first useful action
+  (its first write to a vault file or its first MCP call).
