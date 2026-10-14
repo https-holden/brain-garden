@@ -678,6 +678,8 @@ def paths_ledger(tmp):
         os.makedirs(os.path.dirname(os.path.join(vault, rel)), exist_ok=True)
         with open(os.path.join(vault, rel), "w", encoding="utf-8") as fh:
             fh.write("---\n%s\n---\n\nA line of text.\n" % text)
+    with open(os.path.join(vault, "Daily", "CLAUDE.md"), "w", encoding="utf-8") as fh:
+        fh.write("Daily notes are never rewritten after their day.\n")  # loaded by Claude Code on demand
     fx = os.path.join(ROOT, "tools", "fixtures", "paths")
     shutil.copy(os.path.join(fx, "find.log"), os.path.join(vault, ".paths", "find.log"))
     home = os.path.join(tmp, "paths-home")
@@ -690,7 +692,8 @@ def paths_ledger(tmp):
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 with open(dest, "w", encoding="utf-8") as fh:
                     fh.write(read(os.path.join(root, fn)).replace("__VAULT__", json.dumps(vault)[1:-1]))
-    env = dict(no_git_env(), HOME=home)
+    # Two hours east of UTC: a transcript time of 23:30 UTC falls on the next local day.
+    env = dict(no_git_env(), HOME=home, TZ="XYZ-2")
     env.pop("CLAUDE_CONFIG_DIR", None)
     git = shutil.which("git")
     if git:
@@ -733,16 +736,18 @@ def paths_ledger(tmp):
     def last(rel, kind):
         return max(steps.get(rel, {}).get(kind, {}) or [""])
 
-    got = {rel: (count(rel, "read"), last(rel, "read")) for rel in
-           ("CLAUDE.md", sleep, coffee, "Now.md", "People/Sam.md", "Playbooks/Wind down at night.md", "Knowledge/",
-            ".claude/skills/start-of-day/SKILL.md", ".claude/skills/end-of-day/SKILL.md")}
-    want = {"CLAUDE.md": (4, "2026-10-13"), sleep: (4, "2026-10-13"), coffee: (1, "2026-10-11"),
+    want = {"CLAUDE.md": (4, "2026-10-13"), sleep: (4, "2026-10-13"), coffee: (2, "2026-10-11"),
             "Now.md": (2, "2026-10-13"), "People/Sam.md": (2, "2026-10-12"),
             "Playbooks/Wind down at night.md": (1, "2026-10-12"), "Knowledge/": (2, "2026-10-12"),
             ".claude/skills/start-of-day/SKILL.md": (2, "2026-10-13"),
-            ".claude/skills/end-of-day/SKILL.md": (1, "2026-10-11")}
-    check("paths: reads per file and their last dates match the fixtures (Read, Bash cat, grep hits, a folder "
-          "listing, a Skill call, a slash command, CLAUDE.md once per session, a subagent with its parent)",
+            ".claude/skills/end-of-day/SKILL.md": (1, "2026-10-11"), "Me.md": (1, "2026-10-11"),
+            "Daily/CLAUDE.md": (1, "2026-10-10"), "Daily/2026-10-10.md": (1, "2026-10-13"),
+            "People/": (1, "2026-10-13"), "Playbooks/": (1, "2026-10-13"), "bin/find.py": (0, "")}
+    got = {rel: (count(rel, "read"), last(rel, "read")) for rel in want}
+    check("paths: reads per file and their last dates match the fixtures (Read, Bash cat, grep hits and context "
+          "lines, a grep too big to show whole, folder listings and Globs, a Skill call, a slash command, CLAUDE.md "
+          "once per session, a nested CLAUDE.md, an @-mentioned file, a subagent with its parent; local dates; "
+          "running a vault script is not reading it)",
           got == want, "\n".join("%s: got %s, want %s" % (k, got[k], want[k]) for k in want if got[k] != want[k]))
     check("paths: writes from Edit, Write and a Bash redirect; a file that does not exist now is left out",
           count("Now.md", "write") == 2 and last("Now.md", "write") == "2026-10-12"
@@ -755,13 +760,13 @@ def paths_ledger(tmp):
               steps.get(sleep, {}).get("git") == {"2026-10-01": 1, "2026-10-11": 1}
               and count("People/Sam.md", "git") == 1, str(steps.get(sleep)))
     size = {rel: len(read(os.path.join(vault, rel))) for rel in
-            ("CLAUDE.md", "Now.md", sleep, "Playbooks/Wind down at night.md",
+            ("CLAUDE.md", "Now.md", sleep, "Playbooks/Wind down at night.md", "Me.md", "Daily/CLAUDE.md",
              ".claude/skills/start-of-day/SKILL.md", ".claude/skills/end-of-day/SKILL.md")}
     start = [size["CLAUDE.md"] + size[".claude/skills/start-of-day/SKILL.md"] + size["Now.md"] + n
-             for n in (size[sleep], 0)]  # the second one read the note only after its first write
+             for n in (size[sleep] + size["Daily/CLAUDE.md"], 0)]  # the second read the note after its write
     types = ledger.get("types", {})
     want_types = {"start-of-day": {"sessions": 2, "fixed_load": round(sum(start) / 2)},
-                  "end-of-day": {"sessions": 1, "fixed_load": size["CLAUDE.md"]
+                  "end-of-day": {"sessions": 1, "fixed_load": size["CLAUDE.md"] + size["Me.md"]
                                  + size[".claude/skills/end-of-day/SKILL.md"] + size[sleep]},
                   "misc": {"sessions": 1, "fixed_load": size["CLAUDE.md"] + size["Playbooks/Wind down at night.md"]
                            + size[sleep]}}
@@ -823,11 +828,45 @@ def paths_ledger(tmp):
           "python3 bin/paths.py" in eod.split("bin/lint.py", 1)[-1] and not missing
           and "Bash(python3 bin/paths.py:*)" in settings, "missing %s" % missing)
 
+    if git:  # a vault in a folder of a bigger repo: Claude Code runs at the repo's top, where the settings are
+        nest, nest_home = os.path.join(tmp, "nest-repo"), os.path.join(tmp, "nest-home")
+        os.makedirs(nest)
+        run([git, "init", "-q"], cwd=nest, env=env)
+        with open(os.path.join(nest, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Acme tools\n")
+        code, out = seed(tmp, "--preset", "personal", "--dest", os.path.join(nest, "acme-brain"), "--name", "Nest Brain",
+                         "--owner", "Sam")
+        check("build a vault in a folder of a repo", code == 0, out)
+        when = "2026-10-01T12:00:00+00:00"
+        run([git, "add", "-A"], cwd=nest, env=env)
+        run([git, "-c", "user.name=Sam", "-c", "user.email=sam@example.com", "-c", "commit.gpgsign=false", "commit",
+             "-q", "--no-verify", "-m", "Plant"], cwd=nest, env=dict(env, GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when))
+        projects = os.path.join(nest_home, ".claude", "projects", re.sub(r"[^A-Za-z0-9]", "-", nest))
+        os.makedirs(projects)
+        for fn in sorted(os.listdir(os.path.join(fx, "nested"))):
+            with open(os.path.join(projects, fn), "w", encoding="utf-8") as fh:
+                fh.write(read(os.path.join(fx, "nested", fn)).replace("__REPO__", json.dumps(nest)[1:-1]))
+        code, out = run(paths, cwd=os.path.join(nest, "acme-brain"), env=dict(env, HOME=nest_home))
+        nested = read(os.path.join(nest, "acme-brain", ".paths", "ledger.json"))
+        try:
+            nested = json.loads(nested)
+        except ValueError:
+            nested = {}
+        got = {rel: {k: v for k, v in kinds.items() if k != "git" or rel == "Now.md"}
+               for rel, kinds in nested.get("paths", {}).items() if rel in ("CLAUDE.md", "Now.md") or "README" in rel}
+        check("paths: a vault in a folder of a repo is measured from sessions at the repo's top: only footsteps "
+              "inside the vault, its CLAUDE.md loaded, a session that never enters the vault left out",
+              code == 0 and "2 transcripts read" in out and got == {
+                  "CLAUDE.md": {"read": {"2026-10-13": 1}},
+                  "Now.md": {"read": {"2026-10-13": 1}, "git": {"2026-10-01": 1}}}
+              and nested.get("types") == {"misc": {"sessions": 1, "fixed_load": None}}
+              and "(1 session)" in read(os.path.join(nest, "acme-brain", ".paths", "report.md")), "%s\n%s" % (out, got))
+
     code, out = seed(tmp, "--preset", "personal", "--dest", "bare-brain", "--name", "Bare Brain", "--owner", "Sam")
     bare = os.path.join(tmp, "bare-brain")
     empty = os.path.join(tmp, "empty-home")
     os.makedirs(empty)
-    bare_env = dict(no_git_env(), HOME=empty)
+    bare_env = dict(no_git_env(), HOME=empty, TZ="XYZ-2")
     bare_env.pop("CLAUDE_CONFIG_DIR", None)
     code, out = run([PY, os.path.join("bin", "paths.py")], cwd=bare, env=bare_env)
     report = read(os.path.join(bare, ".paths", "report.md"))
@@ -836,6 +875,23 @@ def paths_ledger(tmp):
           code == 0 and "Traceback" not in out and "Reads not measured" in report and "## Size budgets" in report
           and "| CLAUDE.md |" in report and "## Inbound links" in report and "## Writes" in report
           and "## Hot" not in report and "## Dormant" not in report and "## Fixed load" not in report, out + report)
+    os.makedirs(os.path.join(empty, ".claude", "projects", re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(bare))))
+    open(os.path.join(bare, ".paths", "find.log"), "w").close()
+    if git:
+        when = "2026-10-01T12:00:00+00:00"
+        run([git, "init", "-q"], cwd=bare, env=bare_env)
+        run([git, "add", "-A"], cwd=bare, env=bare_env)
+        run([git, "-c", "user.name=Sam", "-c", "user.email=sam@example.com", "-c", "commit.gpgsign=false", "commit",
+             "-q", "--no-verify", "-m", "Plant"], cwd=bare, env=dict(bare_env, GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when))
+    code, out = run([PY, os.path.join("bin", "paths.py"), "--today", "2026-10-14"], cwd=bare, env=bare_env)
+    report = read(os.path.join(bare, ".paths", "report.md"))
+    head = " ".join(report.split("\n")[:6])
+    check("paths: a transcripts folder with no session and an empty find log are named as found but empty, "
+          "and reads are still not measured; counts are singular when they are one",
+          code == 0 and "~/.claude (found, no sessions yet)" in head and "find log (found, empty)" in head
+          and "Reads not measured" in head and (not git or ("git log (1 commit)" in head
+                                                            and re.search(r"^- \S.*: 1 write, last 2026-10-01$", report, re.M))),
+          out + report)
     for fn in ("ledger.json", "report.md"):
         os.remove(os.path.join(bare, ".paths", fn))
     with open(os.path.join(bare, ".bed.json"), "w", encoding="utf-8") as fh:

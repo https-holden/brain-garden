@@ -15,8 +15,11 @@ optional, are named at the top of the report:
 
 - Claude Code transcripts (reads and writes): every .jsonl file under
   <config folder>/projects/<slug>/, where the slug is the vault's path with
-  each character that is not a letter or a digit turned into "-" (and the main
-  checkout's path too when the vault is a git worktree). The config folders
+  each character that is not a letter or a digit turned into "-". The main
+  checkout's path counts too when the vault is a git worktree, and so does
+  the repo's top folder when the vault is a folder inside a bigger repo
+  (Claude Code runs there; only footsteps inside the vault count, and a
+  session that never steps into the vault is left out). The config folders
   are $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-* that has a
   projects/ folder. Subagent transcripts count with their parent session.
 - The find log, .paths/find.log: each path a query matched is a footstep of
@@ -26,11 +29,15 @@ optional, are named at the top of the report:
 
 What counts in a transcript: the path given to Read, Edit or Write; a vault
 path in a Bash command (a folder is one footstep on the folder; the target of
-sed -i, >, >> or tee is a write); each file named on a line of grep output
-(Bash or Grep); the folder a Glob lists; the SKILL.md of a skill called by the
-Skill tool or by a slash command; and CLAUDE.md, which Claude Code loads at the
-start of every session. Absolute and vault-relative paths are the same file,
-only files that exist now count, and a session counts each file once per kind.
+sed -i, >, >> or tee is a write; a script it runs, as in python3 bin/find.py,
+is not a read); each file named on a line of grep output, context lines too,
+or in a Grep's full list of files when the output shown was cut short; the
+folder a Glob lists; an @-mentioned file; the SKILL.md of a skill called by
+the Skill tool or by a slash command; and CLAUDE.md, which Claude Code loads
+once per session, plus any nested CLAUDE.md it loads. Absolute and
+vault-relative paths are the same file, only files that exist now count, a
+session counts each file once per kind, and a footstep is dated on this
+computer's clock, like --today, the find log and the git log.
 
 A session's type is its first skill or slash command, by name, else `misc`.
 Its first useful action is its first write to a vault file or its first MCP
@@ -64,13 +71,17 @@ LEDGER = os.path.join(".paths", "ledger.json")
 REPORT = os.path.join(".paths", "report.md")
 HOT_DAYS, HOT_READS, DORMANT_DAYS, TOP_HOT, TOP_LIST = 30, 3, 60, 20, 10
 READS = ("read", "find")  # the kinds that make a file hot; write and git never do
-# Claude Code's own commands are not a session's type; any other slash command is, by name.
+# Claude Code's own slash commands (and their aliases) never type a session; any other one does, by
+# name. Only the common ones: a rarer built-in at the start of a session just names its type.
 BUILT_IN = {"add-dir", "agents", "clear", "compact", "config", "context", "cost", "doctor", "effort", "exit",
             "export", "fast", "help", "hooks", "ide", "init", "login", "logout", "mcp", "memory", "model",
-            "permissions", "plugin", "resume", "rewind", "status", "usage"}
+            "output-style", "permissions", "plugin", "rename", "resume", "review", "rewind", "statusline",
+            "status", "theme", "todos", "usage", "vim",
+            "new", "reset", "quit", "settings"}  # aliases of clear, clear, exit and config
 WRITERS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 READERS = {"cat", "head", "tail", "less", "more", "bat"}  # Bash commands that read a file whole
 GREPS = {"grep", "egrep", "fgrep", "rg", "ag"}
+RUNNERS = re.compile(r"^(python[0-9.]*|sh|bash|zsh|node|ruby|perl)$")  # their first argument is a script
 CONTROL = {"|", "||", "&&", ";", ";;", "&", "|&", "(", ")"}
 REDIRECT = {">", ">>", ">|", "&>", "&>>"}
 COMMAND = re.compile(r"<command-name>/?([^<\s]+)</command-name>")
@@ -94,16 +105,23 @@ def git(vault, *args):
 
 
 def checkouts(vault):
-    """The vault's path, and the same folder in the main checkout when the vault is a git worktree."""
-    out = [vault]
+    """(the vault's folder in every checkout, the repo's top folder in every checkout). The main checkout
+    counts too when the vault is in a git worktree. The top folder is where Claude Code runs when the
+    vault is a folder of a bigger repo, since that is where the builder puts .claude/settings.json."""
+    vaults, tops = [vault], []
     lines = (git(vault, "rev-parse", "--show-toplevel", "--git-common-dir") or "").split("\n")
     if len(lines) >= 2 and lines[0] and lines[1]:
         top = os.path.realpath(lines[0])
+        sub = os.path.relpath(os.path.realpath(vault), top)
         common = os.path.realpath(os.path.join(vault, lines[1]))
+        if not os.path.isdir(common):
+            common = os.path.realpath(os.path.join(top, lines[1]))
         main = os.path.dirname(common)
+        tops.append(top)
         if os.path.basename(common) == ".git" and main != top:
-            out.append(os.path.normpath(os.path.join(main, os.path.relpath(os.path.realpath(vault), top))))
-    return out
+            vaults.append(os.path.normpath(os.path.join(main, sub)))
+            tops.append(main)
+    return vaults, tops
 
 
 class Vault:
@@ -111,11 +129,23 @@ class Vault:
 
     def __init__(self, root):
         self.root = root
-        self.roots = []
-        for r in checkouts(root):
+        self.roots, self.places, self.kinds = [], [], {}
+        vaults, tops = checkouts(root)
+        for r in vaults + tops:
             for form in (os.path.abspath(r), os.path.realpath(r)):
-                if form not in self.roots:
-                    self.roots.append(form)
+                if r in vaults and form not in self.roots:
+                    self.roots.append(form)  # paths resolve against these
+                if form not in self.places:
+                    self.places.append(form)  # Claude Code projects named after these hold the transcripts
+
+    def near(self, cwd):
+        """'in' when a session's folder is the vault or inside it, 'above' when it holds the vault, else None."""
+        if self.rel(cwd) is not None:
+            return "in"
+        for cand in (os.path.normpath(cwd), os.path.realpath(cwd)):
+            if any(r.startswith(cand.rstrip(os.sep) + os.sep) for r in self.roots):
+                return "above"
+        return None
 
     def rel(self, path, cwd=None):
         """'Notes/X.md' for a path inside the vault ('' for the root), None for one outside it."""
@@ -134,8 +164,10 @@ class Vault:
         """'file', 'dir' or None (missing, the root, or inside .git)."""
         if not rel or rel == ".git" or rel.startswith(".git/"):
             return None
-        path = os.path.join(self.root, *rel.rstrip("/").split("/"))
-        return "dir" if os.path.isdir(path) else "file" if os.path.isfile(path) else None
+        if rel not in self.kinds:
+            path = os.path.join(self.root, *rel.rstrip("/").split("/"))
+            self.kinds[rel] = "dir" if os.path.isdir(path) else "file" if os.path.isfile(path) else None
+        return self.kinds[rel]
 
     def size(self, rel):
         with open(os.path.join(self.root, *rel.split("/")), encoding="utf-8", errors="replace") as fh:
@@ -171,7 +203,7 @@ def shown(path):
 def transcript_files(vault, extra):
     """(the folders transcripts were found in, as shown in the report; every transcript file)."""
     slugs = []
-    for r in vault.roots:
+    for r in vault.places:
         if slug(r) not in slugs:
             slugs.append(slug(r))
     found, files = [], []
@@ -247,35 +279,50 @@ def bash_paths(command):
             k += 1
         cmd, args = (os.path.basename(plain[k]), plain[k + 1:]) if k < len(plain) else ("", [])
         grep = grep or cmd in GREPS or (cmd == "git" and args[:1] == ["grep"])
+        if RUNNERS.match(cmd):  # running a script (python3 bin/find.py) is not reading it
+            script = next((i for i, a in enumerate(args) if not a.startswith("-")), None)
+            args = args[:script] + args[script + 1:] if script is not None else args
         if cmd == "tee":
             writes += [a for a in args if not a.startswith("-")]
         elif cmd == "sed" and any(a.startswith("-i") or a.startswith("--in-place") for a in args):
             writes += [a for a in args if not a.startswith("-")]
         else:
-            reads += plain[k:]
+            reads += args  # never the command itself: running bin/lint.py is not reading it
             whole += args if cmd in READERS else []
         words = []
     return reads, whole, writes, grep
 
 
-def session(recs, vault):
-    """One session's footsteps, type and fixed load, from its records in time order. None if it has no turns."""
-    out = {"date": "", "type": "misc", "fixed_load": None, "read": {}, "write": {}}
-    state = {"typed": False, "useful": False, "harness": False, "turns": 0}
-    loaded, greps = set(), {}
+def local_day(stamp):
+    """The local date, YYYY-MM-DD, of a transcript time (Claude Code writes them in UTC), like --today."""
+    text = str(stamp or "")
+    try:
+        when = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text[:10]
+    return (when.astimezone() if when.tzinfo else when).date().isoformat()
 
-    def step(kind, rel, day, whole=False):
+
+def session(recs, vault):
+    """One session's footsteps, type and fixed load, from its records in time order. None if it has no
+    turns, or if it ran in a folder that holds the vault and never stepped into it."""
+    out = {"date": "", "type": "misc", "fixed_load": None, "read": {}, "write": {}}
+    state = {"typed": False, "useful": False, "harness": False, "turns": 0, "inside": False}
+    loaded, greps, nears = set(), {}, {}
+
+    def step(kind, rel, day, whole=False, enters=True):
         what = vault.kind(rel)
         if what is None or (what == "dir" and kind != "read"):
             return
         key = rel.rstrip("/") + ("/" if what == "dir" else "")
         out[kind].setdefault(key, day)
+        state["inside"] = state["inside"] or enters
         if whole and what == "file" and not state["useful"]:
             loaded.add(key)
 
     def write(rel, day):
         if rel:  # a write into the vault, even to a file gone since, is the first useful action
-            state["useful"] = True
+            state["useful"] = state["inside"] = True
             step("write", rel, day)
 
     def skill(name, day, slash):
@@ -289,15 +336,25 @@ def session(recs, vault):
 
     for rec in recs:
         kind = rec.get("type")
-        if kind not in ("user", "assistant"):
+        if kind not in ("user", "assistant", "attachment"):
             continue
-        state["turns"] += 1
-        day = str(rec.get("timestamp") or "")[:10]
+        day = local_day(rec.get("timestamp"))
         out["date"] = out["date"] or day
         cwd = rec.get("cwd") if isinstance(rec.get("cwd"), str) else None
-        if cwd and not state["harness"] and vault.rel(cwd) is not None:
-            state["harness"] = True
-            step("read", "CLAUDE.md", day, whole=True)
+        if cwd:
+            if cwd not in nears:
+                nears[cwd] = vault.near(cwd)
+            state["inside"] = state["inside"] or nears[cwd] == "in"
+            if nears[cwd] and not state["harness"]:  # Claude Code loads the vault's CLAUDE.md at the start
+                state["harness"] = True
+                step("read", "CLAUDE.md", day, whole=True, enters=False)
+        if kind == "attachment":  # an @-mentioned file, or a nested CLAUDE.md Claude Code loaded
+            att = rec.get("attachment") if isinstance(rec.get("attachment"), dict) else {}
+            where = next((att[k] for k in ("path", "filename", "file_path") if isinstance(att.get(k), str)), None)
+            if att.get("type") in ("file", "nested_memory"):
+                step("read", vault.rel(where, cwd), day, whole=True)
+            continue
+        state["turns"] += 1
         message = rec.get("message") if isinstance(rec.get("message"), dict) else {}
         content = message.get("content")
         blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
@@ -312,6 +369,9 @@ def session(recs, vault):
                 base = greps[b.get("tool_use_id")]
                 for line in text_of(b.get("content")).split("\n"):
                     step("read", grep_hit(vault, line, base), day)
+                full = rec.get("toolUseResult") if isinstance(rec.get("toolUseResult"), dict) else {}
+                for name in full.get("filenames") or [] if isinstance(full.get("filenames"), list) else []:
+                    step("read", vault.rel(name, base), day)  # every hit, when the result shown was cut short
             elif kind == "assistant" and b.get("type") == "tool_use":
                 name, args = str(b.get("name") or ""), b.get("input") if isinstance(b.get("input"), dict) else {}
                 if name.startswith("mcp__"):
@@ -332,16 +392,18 @@ def session(recs, vault):
                         greps[b.get("id")] = cwd
                 elif name == "Grep":
                     greps[b.get("id")] = cwd
-                elif name in ("Glob", "LS"):
+                elif name in ("Glob", "LS"):  # one footstep on the folder listed: path, then the pattern's
+                    pattern = str(args.get("pattern") or "") if name == "Glob" else ""
                     literal = []
-                    for part in str(args.get("pattern") or "").split("/") if name == "Glob" else []:
+                    for part in pattern.split("/")[:-1]:  # folders up to the first wildcard
                         if any(c in part for c in "*?[{"):
                             break
                         literal.append(part)
-                    folder = os.path.join(str(args.get("path") or cwd or vault.root), *literal)
-                    if vault.kind(vault.rel(folder, cwd)) == "dir":
-                        step("read", vault.rel(folder, cwd), day)
-    if not state["turns"]:
+                    prefix = "/".join(literal) or ("/" if pattern.startswith("/") else "")
+                    folder = vault.rel(os.path.join(str(args.get("path") or cwd or vault.root), prefix), cwd)
+                    if vault.kind(folder) == "dir":
+                        step("read", folder, day)
+    if not state["turns"] or not state["inside"]:
         return None
     if state["useful"]:
         out["fixed_load"] = sum(vault.size(rel) for rel in loaded if vault.kind(rel) == "file")
@@ -349,11 +411,12 @@ def session(recs, vault):
 
 
 def grep_hit(vault, line, cwd):
-    """The vault file a line of grep output names (path, path:line:text or path:text), or None."""
+    """The vault file a line of grep output names, or None: path, path:N:text or path:text for a match,
+    path-N-text or path-text for a context line (-A, -B, -C)."""
     line = line.strip()
     if not line or len(line) > 4096:
         return None
-    for cand in [line] + [line[:i] for i, ch in enumerate(line) if ch == ":"][:3]:
+    for cand in [line] + [line[:m.start()] for m in re.finditer(r"[:-]", line)][:20]:
         rel = vault.rel(cand, cwd)
         if vault.kind(rel) == "file":
             return rel
@@ -380,7 +443,7 @@ def find_log(root):
 
 def git_log(root):
     """[(date, paths touched)], one per commit, or None when the vault is not a repo with commits."""
-    text = git(root, "log", "--no-renames", "--relative", "--name-only", "--date=short", "--format=%x01%cd")
+    text = git(root, "log", "--no-renames", "--relative", "--name-only", "--date=short-local", "--format=%x01%cd")
     if text is None:
         return None
     commits = []
@@ -500,6 +563,11 @@ def refresh(root, today, extra):
 # ------------------------------------------------------------ report
 
 
+def plural(n, one, many=None):
+    """'1 commit', '2 commits', '2 queries'."""
+    return "%d %s" % (n, one if n == 1 else many or one + "s")
+
+
 def notes(root):
     """Every note: a .md file outside the dot folders, bin/ and Templates/."""
     out = []
@@ -546,20 +614,23 @@ def budget_rows(root):
 def report(root, ledger, today):
     paths, src = ledger["paths"], ledger["sources"]
     has_reads = bool(ledger["sessions"]) or bool(src.get("find_log"))
-    named = []
+    named, folders = [], ", ".join(src["transcripts"])
     if ledger["sessions"]:
-        named.append("Claude Code transcripts in %s (%d sessions)" % (", ".join(src["transcripts"]) or "the ledger",
-                                                                      src["sessions"]))
-    if src.get("find_log"):
-        named.append("find log (%d queries)" % src["find_log"])
+        named.append("Claude Code transcripts in %s (%s)" % (folders or "the ledger",
+                                                            plural(src["sessions"], "session")))
+    elif folders:
+        named.append("Claude Code transcripts in %s (found, no sessions yet)" % folders)
+    if src.get("find_log") is not None:
+        named.append("find log (%s)" % (plural(src["find_log"], "query", "queries") if src["find_log"]
+                                        else "found, empty"))
     if src.get("git") is not None:
-        named.append("git log (%d commits)" % src["git"])
+        named.append("git log (%s)" % plural(src["git"], "commit"))
     lines = ["# Paths report", "",
              "Refreshed %s. Last pass: %s. Window: %d days (dormant: %d)."
              % (ledger["refreshed"], ledger.get("last_pass") or "never", HOT_DAYS, DORMANT_DAYS),
              "Sources: %s." % ("; ".join(named) or "none")]
     if not has_reads:
-        lines.append("Reads not measured: no Claude Code transcripts and no find log on this machine.")
+        lines.append("Reads not measured: no Claude Code session and no find query yet on this machine.")
 
     def recent(rel, kinds, days=HOT_DAYS):
         return sum(n for k in kinds for d, n in paths.get(rel, {}).get(k, {}).items() if within(d, today, days))
@@ -579,7 +650,7 @@ def report(root, ledger, today):
     def steps_line(rel, kinds, noun):
         n, by_find = recent(rel, kinds), recent(rel, ("find",))
         extra = " (%d by find)" % by_find if by_find and noun == "reads" else ""
-        return "- %s: %d %s%s, last %s" % (rel, n, noun, extra, last(rel, kinds))
+        return "- %s: %s%s, last %s" % (rel, plural(n, noun[:-1]), extra, last(rel, kinds))
 
     if has_reads:
         lines += ["", "## Hot: %d or more reads in %d days" % (HOT_READS, HOT_DAYS)]
