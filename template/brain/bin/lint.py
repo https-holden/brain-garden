@@ -127,7 +127,7 @@ def unsigned_hubs(notes):
             out.append("%s: %d notes use this topic and its page links none: put the best 3 to 7 under "
                        "## Start here" % (rel, count[topic]))
     if "Home.md" in notes and len(pages) >= BUSY:
-        section = ("\n" + notes["Home.md"][1]).split("\n## Start here\n", 1)
+        section = re.split(r"\n#{2,6} *start here[ \t]*\n", "\n" + notes["Home.md"][1], maxsplit=1, flags=re.I)
         section = re.split(r"\n#{1,2} ", section[1], maxsplit=1)[0] if len(section) > 1 else ""
         names = {p.lower() for p in pages}
         if not any(os.path.basename(t.strip()).lower() in names for t in PLAIN.findall(section)):

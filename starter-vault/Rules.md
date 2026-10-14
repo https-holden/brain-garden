@@ -18,7 +18,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `People/` | One note per person: who they are, their role, one line. | Private details, anything they would not want written down. |
 | `Clippings/` | Things other people wrote, as clean Markdown (`obsidian:defuddle` or the Web Clipper). | Anything authored here. The folder is the divider between your writing and ingested text. |
 | `Daily/` | `YYYY-MM-DD`, the raw log of one day. Never rewritten after the day. | Knowledge (copy it out to its own note and link back). |
-| `Categories/` | One page per topic in use: `tags: [categories]`, one paragraph, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
+| `Categories/` | One page per topic in use: `tags: [categories]`, a `## Start here` of plain links, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
 | `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets), `find.py` (step 1 of the recipe), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |

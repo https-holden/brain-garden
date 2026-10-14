@@ -151,7 +151,7 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 
 def start_here(page: str) -> str:
     """A new topic page with the `## Start here` heading the topic template has, above its first embed."""
-    if re.search(r"^## Start here\s*$", page, re.M):
+    if re.search(r"^#{2,6} *start here\s*$", page, re.M | re.I):
         return page
     embed = re.search(r"^!\[\[", page, re.M)
     if not embed:

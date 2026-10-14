@@ -11,7 +11,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 |---|---|---|
 | `Home.md`, `Readme.md`, `Decisions.md`, `CLAUDE.md`, `Rules.md` | Hub, human guide, decision log, what a session loads first, the detail it reads before writing. | Content. |
 @@ME_ROW@@@@NOW_ROW@@@@MAP_ROWS@@
-| `Categories/` | One page per topic in use: `tags: [categories]`, one paragraph, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
+| `Categories/` | One page per topic in use: `tags: [categories]`, a `## Start here` of plain links, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
 | `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets), `find.py` (step 1 of the recipe)@@BIN_EXTRA@@. Re-runnable maintenance scripts. | Secrets, logs in git. |
