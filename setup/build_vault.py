@@ -376,6 +376,23 @@ def section(name, tokens):
         return sub(fh.read(), tokens)
 
 
+# The sections spliced into Rules.md, and when CLAUDE.md's one-line pointer sends a session to each.
+RULES_SECTIONS = {
+    "claude-ingest": "Before bringing anything in, filing it or removing a clipping",
+    "claude-daily": "Before touching a daily note, its brief or a reply card",
+}
+
+# Size budgets, in characters, for the files a session loads without asking (and Rules.md).
+# `SKILL.md` is every .claude/skills/*/SKILL.md; a vault-relative path overrides it for one skill.
+BUDGETS = {"CLAUDE.md": 9000, "Rules.md": 20000, "Me.md": 5000, "Now.md": 12000, "SKILL.md": 12000}
+
+
+def pointer(name, tokens):
+    """CLAUDE.md's line for a section that lives in Rules.md, named by the section's own heading."""
+    heading = section(name, tokens).split("\n", 1)[0].lstrip("#").strip()
+    return '- %s: "%s" in `Rules.md`.\n' % (RULES_SECTIONS[name], heading)
+
+
 def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     extra, schema, types = brain_tokens(kinds, working_memory)
     tokens = dict(tokens, **extra)
@@ -384,6 +401,7 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     # The action log: one line per thing done on the owner's behalf, in a plain file in the
     # vault (a person working alone has no team channel to post it in).
     log_in_daily = "Daily" in kinds
+    spliced = [n for n, on in (("claude-ingest", ingest), ("claude-daily", daily)) if on]
     tokens.update(
         ACTION_LOG=("`## Actions` in today's `Daily/YYYY-MM-DD.md`" if log_in_daily
                     else "`Actions.md`"),
@@ -396,8 +414,8 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
                 "done on the owner's behalf. | Plans, notes. |\n"),
         BIN_EXTRA=(", `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them)"
                    if ingest else ""),
-        EXTRA_SECTIONS="".join(section(n, tokens) + "\n" for n, on in
-                               (("claude-ingest", ingest), ("claude-daily", daily)) if on),
+        EXTRA_SECTIONS="".join(section(n, tokens) + "\n" for n in spliced),  # into Rules.md
+        SECTION_POINTERS="".join(pointer(n, tokens) for n in spliced),  # into CLAUDE.md
         README_SECTIONS="".join(section(n, tokens) + "\n" for n, on in
                                 (("readme-daily", daily), ("readme-ingest", ingest)) if on),
     )
@@ -423,7 +441,7 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
         seeder.write(os.path.join(dest, folder, ".gitkeep"), "")
     seeder.write(os.path.join(dest, "bin", "vault.json"), json.dumps(
         {"kinds": schema, "draft_max_days": 14, "now_max_days": 14,
-         "dash_exempt": [".obsidian/", ".git/", ".claude/", "bin/"]}, indent=2) + "\n")
+         "dash_exempt": [".obsidian/", ".git/", ".claude/", "bin/"], "budgets": BUDGETS}, indent=2) + "\n")
     types.update({k: PROP_TYPES[k] for k in ("aliases", "cssclasses", "tags", "modified")})
     seeder.write(os.path.join(dest, ".obsidian", "types.json"),
                  json.dumps({"types": types}, indent=2) + "\n")

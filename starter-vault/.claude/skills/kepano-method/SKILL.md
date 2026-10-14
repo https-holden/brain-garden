@@ -10,7 +10,7 @@ rule-by-rule digest in our own words; read it before answering, and read the pos
 for his phrasing. `references/divergences.md` lists where this vault deliberately departs.
 
 Vault mechanics (which folder, which template, which property) live in the vault's
-`CLAUDE.md`. This skill is the *why* and the *practice*; `CLAUDE.md` is the *where*.
+`Rules.md`. This skill is the *why* and the *practice*; `Rules.md` is the *where*.
 
 ## The rules in one screen
 
@@ -39,7 +39,7 @@ Plus the practices the post describes rather than lists:
 2. Walk the rules above and `references/method.md`. For each: follows, departs, or not applicable.
 3. Before flagging a departure, check `references/divergences.md`. Listed departures are deliberate; never report them as fixes.
 4. Report a short list, worst first. A finding names the rule, the evidence (file and line) and the smallest change that would satisfy it. Do not apply changes during an audit unless asked.
-5. Tell three kinds of finding apart: a method rule broken; a vault convention (from `CLAUDE.md`) broken; a place where the vault has no convention yet and kepano offers one.
+5. Tell three kinds of finding apart: a method rule broken; a vault convention (from `Rules.md`) broken; a place where the vault has no convention yet and kepano offers one.
 
 ## Answering "what would kepano do"
 

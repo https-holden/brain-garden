@@ -65,10 +65,10 @@ def build_prompt(notes: list[Path], paste: bool) -> str:
         today=today, notes="\n".join("- `%s`" % rel(p) for p in notes))
     if not paste:
         return text
-    rules = (VAULT / "CLAUDE.md").read_text(encoding="utf-8")
+    rules = ["## The vault's rules (%s)\n\n%s" % (name, (VAULT / name).read_text(encoding="utf-8"))
+             for name in ("CLAUDE.md", "Rules.md") if (VAULT / name).exists()]
     topics = sorted(p.stem for p in (VAULT / "Categories").glob("*.md"))
-    parts = [text, REPLY_FORMAT,
-             "## The vault's rules (CLAUDE.md)\n\n" + rules,
+    parts = [text, REPLY_FORMAT, *rules,
              "## Topic pages that exist\n\n" + (", ".join(topics) or "none yet"),
              "## The notes"]
     for p in notes:

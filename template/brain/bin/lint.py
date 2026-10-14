@@ -15,6 +15,11 @@ Warnings (exit 0):
   - a Now.md bullet with no date, or one older than now_max_days
   - an action log line (a bullet under `## Actions`) that does not start with
     `YYYY-MM-DD HH:MM` or is missing `Why:` or `Asked by:`
+  - a file a session loads without asking (CLAUDE.md, Me.md, Now.md, each
+    .claude/skills/*/SKILL.md) or Rules.md over its budget, in characters, under
+    `budgets` in bin/vault.json. `SKILL.md` there is every skill's budget; a
+    vault-relative path such as `.claude/skills/pdf/SKILL.md` overrides it for
+    that file only. A file that does not exist is skipped.
 Fixed, never an error:
   - .paths/index.txt (the index bin/find.py reads) is rebuilt and rewritten when
     its content is not what the notes say, with one line saying so. Content, not
@@ -22,7 +27,8 @@ Fixed, never an error:
 
 The schema is the templates: Templates/<Kind> Template.md says which properties a
 kind carries, so a template edit is a schema edit. bin/vault.json maps each kind
-folder to its template and, where it has one, its status vocabulary.
+folder to its template and, where it has one, its status vocabulary, and holds
+the budgets.
 """
 from __future__ import annotations
 
@@ -43,6 +49,8 @@ LINK = re.compile(r"\[\[([^\]|#]+)")
 DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
 DASHES = ("–", "—")
+# The one place the over-budget warning is worded.
+OVER_BUDGET = "{file}: {size:,} chars, over its budget of {budget:,}: have the AI compact it to about {target:,} (75%)"
 
 errors, warnings = [], []
 
@@ -74,6 +82,24 @@ def walk():
 
 def exempt(rel):
     return any(rel.startswith(p) for p in CONFIG.get("dash_exempt", []))
+
+
+def over_budget():
+    """One warning per budgeted file that is over its budget in bin/vault.json."""
+    table = CONFIG.get("budgets", {})
+    limits = {rel: n for rel, n in table.items() if rel != "SKILL.md"}
+    skills = os.path.join(VAULT, ".claude", "skills")
+    if "SKILL.md" in table and os.path.isdir(skills):
+        for name in sorted(os.listdir(skills)):
+            limits.setdefault(".claude/skills/%s/SKILL.md" % name, table["SKILL.md"])
+    out = []
+    for rel, budget in sorted(limits.items()):
+        path = os.path.join(VAULT, *rel.split("/"))
+        if os.path.isfile(path):
+            size = len(open(path, encoding="utf-8", errors="replace").read())
+            if size > budget:
+                out.append(OVER_BUDGET.format(file=rel, size=size, budget=budget, target=budget * 3 // 4))
+    return out
 
 
 def main():
@@ -143,6 +169,8 @@ def main():
                     warnings.append("Now.md: undated bullet under %s: %s" % (section, line[2:50]))
                 elif (today - datetime.strptime(found[-1], "%Y-%m-%d").date()).days > CONFIG.get("now_max_days", 14):
                     warnings.append("Now.md: stale bullet under %s (%s): %s" % (section, found[-1], line[2:50]))
+
+    warnings.extend(over_budget())
 
     if find.rebuild(VAULT):
         print("index  .paths/index.txt was out of date: rewrote it from the notes (commit it with them)")

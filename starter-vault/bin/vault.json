@@ -23,5 +23,12 @@
     ".git/",
     ".claude/",
     "bin/"
-  ]
+  ],
+  "budgets": {
+    "CLAUDE.md": 9000,
+    "Rules.md": 20000,
+    "Me.md": 5000,
+    "Now.md": 12000,
+    "SKILL.md": 12000
+  }
 }

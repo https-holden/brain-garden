@@ -97,8 +97,8 @@ Using ChatGPT? The copy-and-paste prompts are in
 - **Tools to bring things in**: web pages, PDFs, Word files, emails, photos, old notes from
   Apple Notes, Notion or Evernote. An AI librarian files them: summary, name, topics, links.
 - **A monthly prune** that shows what you collect but never use, so the vault stays useful.
-- **Rules your AI follows** (`CLAUDE.md` in the vault), so it keeps things consistent instead
-  of making a mess.
+- **Rules your AI follows** (`CLAUDE.md` and `Rules.md` in the vault), so it keeps things
+  consistent instead of making a mess.
 
 Backing it up is optional and covered in
 [guides/backup-with-github.md](guides/backup-with-github.md).

@@ -36,8 +36,8 @@ easier to search, which makes it more useful, which makes you put more in.
 
 The garden is meant to get better at being your garden. Every evening, `end-of-day` looks not
 only at what you learned but at how the system did: a kind of note with no home, a topic that
-should be split, a source that is not worth its time, a rule in `CLAUDE.md` that keeps being
-broken. It proposes the smallest change, you approve it, and the reason goes in
+should be split, a source that is not worth its time, a rule in `CLAUDE.md` or `Rules.md` that
+keeps being broken. It proposes the smallest change, you approve it, and the reason goes in
 `Decisions.md`.
 
 This matters most in the **early days**. For the first month the evening loop asks one
