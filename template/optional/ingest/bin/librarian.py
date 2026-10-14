@@ -16,7 +16,7 @@ the list of waiting notes, to whichever AI you use.
 
 The Claude Code run is boxed in: it may read the vault and the web, edit only
 the waiting notes, add topic pages in Categories/, and run only the rename
-helper. Every other action is refused without asking. Nothing is committed.
+helper and the find tool. Every other action is refused without asking. Nothing is committed.
 Set CLAUDE_BIN to use a differently named `claude` command, MODEL to change
 the model (default sonnet).
 """
@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import find  # noqa: E402
 from ingest import DASHES, END, START, VAULT, rename, waiting_notes  # noqa: E402
 
 PROMPT = Path(__file__).with_name("librarian.md")
@@ -98,7 +99,8 @@ def run_claude(notes: list[Path]) -> None:
         sys.exit("No `claude` command found. Install Claude Code, or use --paste with any chat AI.")
     allowed = ["Read", "Glob", "Grep", "WebSearch", "WebFetch",
                "Edit(./Clippings/**)", "Edit(./Categories/**)",  # Edit rules cover Write too
-               "Bash(python3 bin/ingest.py rename *)", "Bash(python3 bin/ingest.py waiting)"]
+               "Bash(python3 bin/ingest.py rename *)", "Bash(python3 bin/ingest.py waiting)",
+               "Bash(python3 bin/find.py *)"]
     allowed += ["Edit(./%s)" % rel(p) for p in notes if not rel(p).startswith("Clippings/")]
     now = dt.datetime.now()
     cmd = [claude, "-p", build_prompt(notes, paste=False), "--model", MODEL,
@@ -135,6 +137,7 @@ def finish(report: str, when: dt.datetime, session: str) -> None:
     left = waiting_notes()
     if left:
         print("\n".join("UNFILED  %s" % rel(p) for p in left))
+    find.rebuild(str(VAULT))  # renamed and new notes, before the check
     print("\nThe vault's check:", flush=True)
     subprocess.run([sys.executable, str(VAULT / "bin" / "lint.py")], cwd=VAULT)
 

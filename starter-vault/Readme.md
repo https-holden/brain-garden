@@ -27,6 +27,14 @@ One folder per kind of note. New notes land in `Notes/`. To make one, create the
 - **`Clippings/`**, from *Clipping Template*: Things other people wrote, as clean Markdown (`obsidian:defuddle` or the Web Clipper). Its name: the page's own title.
 - **`Daily/`**, from *Daily Note Template*: `YYYY-MM-DD`, the raw log of one day. Never rewritten after the day. Its name: `YYYY-MM-DD`.
 
+## Finding things
+
+`python3 bin/find.py <words>` lists the notes whose title, aliases, topics or
+status have every word, one line each. Your AI starts every lookup with it. It reads an index
+of your notes, `.paths/index.txt`, which keeps itself current and is committed, so its history
+shows what the vault knows. Using ChatGPT? `python3 bin/find.py --all` prints
+the whole index: save it as a file in your ChatGPT project, beside `CLAUDE.md` and `Me.md`.
+
 ## Every day
 
 - **Morning**: ask Claude "start my day" (the `start-of-day` skill). Today's note in `Daily/`

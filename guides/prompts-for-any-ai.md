@@ -6,7 +6,9 @@ paste them in and paste its answer back. These prompts make that quick. Copy eve
 a box.
 
 Tip: in ChatGPT, make a **Project** called "Second brain" and put your vault's `CLAUDE.md` and
-`Me.md` in its files. Then you can skip pasting them every time.
+`Me.md` in its files. Add the index of your notes too, so the chat knows what notes exist: run
+`python3 bin/find.py --all > ~/Desktop/index.txt` in your vault and upload `index.txt` (do it
+again now and then, as the vault grows). Then you can skip pasting them every time.
 
 ## Getting set up
 
@@ -69,5 +71,5 @@ writing it.
 >
 > Question: ...
 >
-> (paste the notes; for a big vault, search in Obsidian first with Cmd+Shift+F and paste
-> what it finds)
+> (paste the notes; for a big vault, run `python3 bin/find.py <a few words>` in your vault, or
+> search in Obsidian with Cmd+Shift+F, and paste the notes it finds)

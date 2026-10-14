@@ -34,13 +34,25 @@ def check(label, ok, detail=""):
         failed.append(label)
 
 
-def run(args, cwd=None):
-    res = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+def run(args, cwd=None, env=None):
+    res = subprocess.run(args, cwd=cwd, capture_output=True, text=True, env=env)
     return res.returncode, res.stdout + res.stderr
 
 
 def seed(tmp, *args):
     return run([PY, SEED, *args], cwd=tmp)
+
+
+def read(path):
+    if not os.path.exists(path):
+        return ""
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def no_git_env():
+    """The environment without GIT_* variables, so an inherited GIT_DIR never points git at a real repo."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
 def fixtures(d):
@@ -70,8 +82,14 @@ def ingest_round_trip(vault, fx):
     code, out = run(ing + ["add", os.path.join(fx, "export"), os.path.join(fx, "page.html"),
                            os.path.join(fx, "mail.eml"), os.path.join(fx, "data.csv")], cwd=vault)
     check("ingest: files and a folder", code == 0 and out.count("ADDED") == 4, out)
+    added = re.findall(r"ADDED  (\S.*?)\.md  ", out)
     code, out = run(ing + ["add", "--mine", os.path.join(fx, "essay.docx")], cwd=vault)
     check("ingest: --mine", code == 0 and "ADDED" in out, out)
+    added += re.findall(r"ADDED  (\S.*?)\.md  ", out)
+    index = read(os.path.join(vault, ".paths", "index.txt"))
+    check("ingest: add leaves the index current", len(added) == 5 and all(
+        "\n%s ::" % a in "\n" + index for a in added) and "Clippings/Trip ideas :: Trip :: ::" in index,
+        "added %s\nindex:\n%s" % (added, index))
     clip = open(os.path.join(vault, "Clippings", "Trip ideas.md"), encoding="utf-8").read()
     check("ingest: Notion id dropped, dash replaced, image attached",
           "—" not in clip and "![[a.png]]" in clip and "aliases: [Trip]" in clip, clip)
@@ -105,6 +123,9 @@ def ingest_round_trip(vault, fx):
     essay = open(os.path.join(vault, "Notes", mine), encoding="utf-8").read()
     check("librarian: --apply never rewrites --mine text", "AI REWRITE" not in essay and "[[Book from Bob]]" in essay, essay)
     check("librarian: --apply refuses other notes", "REFUSED  Home.md" in out, out)
+    index = read(os.path.join(vault, ".paths", "index.txt"))
+    check("librarian: --apply leaves the index current",
+          "\nClippings/Book from Bob ::" in "\n" + index and "\nClippings/A book ::" not in "\n" + index, index)
 
 
 def prune_round_trip(vault, fx):
@@ -221,6 +242,174 @@ def daily_loop(tmp):
     check("lint: a good Actions.md passes", code == 0 and "action log line" not in out, out)
 
 
+def find_tool(tmp):
+    """bin/find.py: the index it builds, its queries, the find log, and what keeps the index current."""
+    code, out = seed(tmp, "--preset", "work", "--dest", "find-brain", "--name", "Find Brain", "--owner", "Sam")
+    check("build a vault for the find checks", code == 0, out)
+    vault = os.path.join(tmp, "find-brain")
+    index = os.path.join(vault, ".paths", "index.txt")
+    flog = os.path.join(vault, ".paths", "find.log")
+
+    def note(rel, fm, body="\n"):
+        path = os.path.join(vault, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("---\n%s\n---\n%s" % (fm, body))
+        return path
+
+    def find(*args):
+        code, out = run([PY, os.path.join("bin", "find.py"), *args], cwd=vault)
+        return code, [ln for ln in out.split("\n") if " ::" in ln], out
+
+    claim = "created: 2026-10-01\nsource: \"\"\n"
+    note("Knowledge/Sleep comes before focus.md", claim + 'categories:\n  - "[[Sleep]]"\n  - "[[Health]]"\n'
+         "status: draft\naliases: [Rest first]")
+    note("Knowledge/Coffee after noon hurts sleep.md", claim + 'categories: ["[[Sleep]]"]\nstatus: stale')
+    note("Knowledge/Blue light delays sleep.md", claim + 'categories:\n  - "[[Sleep hygiene]]"\n'
+         "status: verified\naliases:\n  - Screens at night")
+    note("Knowledge/alpha waves rise at rest.md", claim + "categories: []\nstatus: draft")
+    note("Knowledge/.drafts/Secret sleep plan.md", claim + "categories: []\nstatus: draft")
+    note("Playbooks/Wind down at night.md", claim + 'categories:\n  - "[[Sleep|sleep]]"\nstatus: draft')
+    bob = note("People/Bob Smith.md", claim + "categories: []\norg: []\nrole: ")
+    for topic in ("Sleep", "Health", "Sleep hygiene"):
+        note("Categories/%s.md" % topic, "tags:\n  - categories", "\n![[Topics.base#In this topic]]\n")
+    note("Daily/2026-10-10.md", "tags:\n  - daily\ncssclasses:\n  - workbook", "Slept badly, no focus.\n")
+    note("Sleep diary.md", 'categories:\n  - "[[Sleep]]"')
+    want = ["Categories/Health :: :: ::", "Categories/Sleep :: :: ::", "Categories/Sleep hygiene :: :: ::",
+            "Knowledge/alpha waves rise at rest :: :: :: draft",
+            "Knowledge/Blue light delays sleep :: Screens at night :: Sleep hygiene :: verified",
+            "Knowledge/Coffee after noon hurts sleep :: :: Sleep :: stale",
+            "Knowledge/Sleep comes before focus :: Rest first :: Sleep, Health :: draft",
+            "People/Bob Smith :: :: ::", "Playbooks/Wind down at night :: :: Sleep :: draft"]
+
+    code, lines, out = find("--all")
+    check("find --all prints the index: one line per note in a kind folder or Categories/, sorted, "
+          "lists joined, empty slots kept, never Daily/, root files or dot folders",
+          code == 0 and lines == want and read(index) == "\n".join(want) + "\n", out)
+    code, lines, out = find("sleep", "focus")
+    check("find: every word must match", code == 0 and lines == [want[6]], out)
+    code, lines, out = find("rest first")
+    check("find: words match aliases", lines == [want[6]], out)
+    code, lines, out = find("coffee")
+    check("find: a stale note is left out", code == 0 and lines == [], out)
+    code, lines, out = find("coffee", "--stale")
+    check("find --stale shows it", lines == [want[5]], out)
+    code, lines, out = find("--topic", "Sleep")
+    check("find --topic: exactly that topic's notes", code == 0 and lines == [want[6], want[8]], out)
+    code, lines, out = find("--topic", "sleep hygiene")
+    check("find --topic ignores case", lines == [want[4]], out)
+    code, lines, out = find("marmalade")
+    check("find: a miss prints no note", code == 0 and lines == [], out)
+
+    entries = [ln.split("\t") for ln in read(flog).split("\n") if ln]
+    check("find log: one tab-separated line per word or --topic query, none for --all",
+          len(entries) == 7 and all(re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", e[0]) for e in entries),
+          read(flog))
+    check("find log: the query, the hit count and the matched paths",
+          entries and entries[0][1:] == ["sleep focus", "1", "Knowledge/Sleep comes before focus.md"]
+          and entries[4][1:] == ["--topic Sleep", "2", "Knowledge/Sleep comes before focus.md",
+                                 "Playbooks/Wind down at night.md"], read(flog))
+    check("find log: a miss is recorded with 0 hits", entries and entries[-1][1:] == ["marmalade", "0"], read(flog))
+
+    old = note("Knowledge/Magnesium helps sleep.md", claim + "categories: []\nstatus: draft")
+    os.utime(old, (978307200, 978307200))  # a pull or a copy can leave a new note looking old
+    code, lines, out = find("magnesium")
+    check("find: a note added by hand is found by the next query",
+          lines == ["Knowledge/Magnesium helps sleep :: :: :: draft"]
+          and "Knowledge/Magnesium helps sleep ::" in read(index), out)
+    note("People/Bob Smith.md", claim + "categories: []\norg: []\nrole: \naliases: [Bobby]")
+    later = (os.path.getmtime(index) if os.path.exists(index) else 0) + 10
+    os.utime(bob, (later, later))
+    code, lines, out = find("bobby")
+    check("find: a note edited by hand is found by the next query", lines == ["People/Bob Smith :: Bobby :: ::"], out)
+
+    good = read(index)
+    with open(index, "w", encoding="utf-8") as fh:
+        fh.write(good.replace("before focus :: Rest first :: Sleep, Health :: draft", "before focus :: draft"))
+    soon = os.path.getmtime(index) + 100
+    os.utime(index, (soon, soon))  # newer than every note, as after a clone
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    check("lint rewrites an index out of shape, says so, and exits 0",
+          code == 0 and ".paths/index.txt" in out and read(index) == good, out)
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    check("lint says nothing about an index that is current", code == 0 and ".paths/index.txt" not in out, out)
+
+    git = shutil.which("git")
+    if git:
+        env = no_git_env()
+        run([git, "init", "-q"], cwd=vault, env=env)
+        ignored = {p: run([git, "check-ignore", "-q", p], cwd=vault, env=env)[0] == 0
+                   for p in (".paths/find.log", ".paths/index.txt", ".paths/reports/2026-10-14.md")}
+        check("the find log is git-ignored, the index and the rest of .paths/ are not",
+              ignored == {".paths/find.log": True, ".paths/index.txt": False,
+                          ".paths/reports/2026-10-14.md": False}, str(ignored))
+    else:
+        print("skip  the find log is git-ignored (no git on this machine)")
+
+    rules = read(os.path.join(vault, "CLAUDE.md"))
+    check("CLAUDE.md: the one recipe starts with the find tool",
+          re.search(r"## Looking things up: the one recipe\n.*?\n1\. `python3 bin/find\.py ", rules, re.S)
+          is not None, rules[:4000])
+    check("CLAUDE.md: the vault map has .paths/ and find.py --all",
+          "| `.paths/` |" in rules and "find.py --all" in rules, rules)
+    check("Readme.md: mentions the index and find.py --all",
+          "find.py --all" in read(os.path.join(vault, "Readme.md")))
+    check("the chat-AI guide puts find.py --all in a ChatGPT project",
+          "find.py --all" in read(os.path.join(ROOT, "guides", "prompts-for-any-ai.md")))
+
+
+def restates_recipe(text, kinds):
+    """Lines that restate the lookup recipe or list kind folders to find notes. A heuristic."""
+    alt = "|".join(re.escape(k) for k in kinds)
+    rules = [
+        ("lists the kind folders", re.compile(r"\b(?:ls|list|listing)\b[^.\n]{0,40}\bkind folders?\b", re.I)),
+        ("runs ls on a kind folder", re.compile(r"\bls\b(?:\s+-\w+)*\s+[`'\"]?(?:%s)/" % alt)),
+        ("restates a grep step of the recipe", re.compile(
+            r"frontmatter grep|\bgrep\w*\s+(?:the\s+)?(?:frontmatter|file\s?names)|full[- ]text grep", re.I)),
+    ]
+    hits = []
+    for n, line in enumerate(text.split("\n"), 1):
+        why = [w for w, rx in rules if rx.search(line)]
+        if len(set(re.findall(r"\b(%s)/" % alt, line))) >= 3:
+            why.append("names three or more kind folders")
+        if why:
+            hits.append((n, "%s: %s" % (", ".join(why), line.strip())))
+    return hits
+
+
+def recipe_guard():
+    """The lookup recipe lives once, in CLAUDE.md. Shipped skills and sections point at it."""
+    sys.path.insert(0, os.path.join(ROOT, "setup"))
+    import build_vault
+    kinds = sorted(build_vault.KINDS)
+    bad = ("1. `ls` the kind folders and match on words from the ask.\n"
+           "Run `ls Clippings/` to see what came in.\n"
+           "2. Frontmatter grep: `categories` for the topic, then full text grep.\n"
+           "Look in `Notes/`, `References/` and `People/` for a match.\n"
+           "Look it up with the one recipe in `CLAUDE.md`.\n")
+    caught = [n for n, _ in restates_recipe(bad, kinds)]
+    check("the recipe guard catches a skill that restates the recipe or lists kind folders",
+          caught == [1, 2, 3, 4], str(restates_recipe(bad, kinds)))
+    shipped = []
+    for root, _, files in os.walk(os.path.join(ROOT, "template")):
+        for fn in sorted(files):
+            path = os.path.join(root, fn)
+            if fn == "SKILL.md" or (fn.endswith(".md") and (
+                    os.sep + "references" in root or root.endswith(os.path.join("optional", "sections")))):
+                shipped.append(path)
+    shipped.append(os.path.join(ROOT, "template", "optional", "ingest", "bin", "librarian.md"))
+    found = ["%s:%d %s" % (os.path.relpath(p, ROOT), n, why) for p in shipped
+             for n, why in restates_recipe(read(p), kinds)]
+    check("no shipped skill or section restates the recipe or lists kind folders (%d files)" % len(shipped),
+          len(shipped) > 10 and not found, "\n".join(found))
+    pointers = [os.path.join("daily-loop", "dot-claude", "skills", s, "SKILL.md")
+                for s in ("start-of-day", "run-brief", "end-of-day")]
+    pointers.append(os.path.join("ingest", "bin", "librarian.md"))
+    missing = [p for p in pointers if "the one recipe in `CLAUDE.md`"
+               not in read(os.path.join(ROOT, "template", "optional", p))]
+    check("skills that look notes up point at the one recipe in CLAUDE.md", not missing, ", ".join(missing))
+
+
 def plugins(tmp):
     """Every bundled plugin is known to the builder, documented, installs, and parses."""
     sys.path.insert(0, os.path.join(ROOT, "setup"))
@@ -312,6 +501,10 @@ def main():
             code, out = seed(tmp, *args)
             vault = os.path.join(tmp, args[args.index("--dest") + 1])
             check("build %s" % label, code == 0, out)
+            planted = os.path.exists(os.path.join(vault, ".paths", "index.txt"))
+            code, out = run([PY, os.path.join("bin", "find.py"), "--all"], cwd=vault)
+            check("%s plants bin/find.py and its index" % label, planted and code == 0
+                  and out == read(os.path.join(vault, ".paths", "index.txt")), out)
             code, out = run(cmd, cwd=vault)
             check("%s passes its own check" % label, code == 0, out)
             leftover = []
@@ -326,7 +519,9 @@ def main():
         ingest_round_trip(os.path.join(tmp, "sam-brain"), fx)
         prune_round_trip(os.path.join(tmp, "sam-work-brain"), fx)
         daily_loop(tmp)
+        find_tool(tmp)
         plugins(tmp)
+    recipe_guard()
 
     code, out = run([PY, os.path.join(ROOT, "tools", "build_starter.py"), "--check"])
     check("starter-vault/ matches the seed", code == 0, out)
