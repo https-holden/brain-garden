@@ -1,5 +1,9 @@
 # For the AI helping someone set this up
 
+> **Is it about one codebase, or about everything you know?** One codebase:
+> [ObsidianVaultSeed](https://github.com/https-holden/ObsidianVaultSeed). Everything you
+> know, plus the tasks you run on it: Brain Garden.
+
 You are probably here because a person pointed you at this repository and said something like
 "help me get this set up". This file tells you how. It works for Claude (desktop app, Code tab,
 or Claude Code), ChatGPT, Codex, Gemini or any other assistant.

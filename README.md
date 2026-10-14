@@ -1,5 +1,9 @@
 # Brain Garden
 
+> **Is it about one codebase, or about everything you know?** One codebase:
+> [ObsidianVaultSeed](https://github.com/https-holden/ObsidianVaultSeed). Everything you
+> know, plus the tasks you run on it: Brain Garden.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/brain-garden-loop-dark.svg">
