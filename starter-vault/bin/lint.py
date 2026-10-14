@@ -86,7 +86,12 @@ def exempt(rel):
 
 def over_budget():
     """One warning per budgeted file that is over its budget in bin/vault.json."""
-    table = CONFIG.get("budgets", {})
+    table = {}
+    for rel, n in (CONFIG.get("budgets") or {}).items():
+        try:
+            table[os.path.normpath(rel.replace("\\", "/")).replace(os.sep, "/")] = int(n)
+        except (TypeError, ValueError):
+            pass  # a hand-edited budget that is not a number is ignored, never an error
     limits = {rel: n for rel, n in table.items() if rel != "SKILL.md"}
     skills = os.path.join(VAULT, ".claude", "skills")
     if "SKILL.md" in table and os.path.isdir(skills):

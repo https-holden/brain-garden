@@ -36,5 +36,5 @@ and `Me.md`.
 
 `python3 @@VAULT_PREFIX@@bin/lint.py` checks the vault against its own templates and rules.
 Errors block a commit; warnings are worth a look. One warning is about size: the files your AI
-reads every session (`CLAUDE.md`, `Me.md`, `Now.md`, each skill) each have a budget in
+reads every session (`CLAUDE.md`, `Rules.md`, `Me.md`, `Now.md`, each skill) each have a budget in
 `bin/vault.json`, and when one grows past it, ask your AI to compact it.

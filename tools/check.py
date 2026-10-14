@@ -606,6 +606,14 @@ def budgets(tmp):
     named = sorted(re.findall(r"^warn\s+(\S+): .*budget", out, re.M))
     check("lint: a budget set for one skill in bin/vault.json wins for that skill only; a missing file is skipped",
           code == 0 and named == [".claude/skills/end-of-day/SKILL.md", ".claude/skills/run-brief/SKILL.md"], out)
+    config["budgets"] = {"SKILL.md": "12000", "Now.md": "lots", "Me.md": None,
+                         "./.claude/skills/end-of-day/SKILL.md": 30000}
+    with open(config_path, "w", encoding="utf-8") as fh:
+        json.dump(config, fh, indent=2)
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    check("lint: a hand-edited budgets table (a number as text, a word, null, a ./ path) never errors",
+          code == 0 and "Traceback" not in out and "end-of-day/SKILL.md" not in out
+          and "start-of-day/SKILL.md" in out, out)
 
     docs = {"AGENTS.md": "`Rules.md`", os.path.join("guides", "prompts-for-any-ai.md"): "`CLAUDE.md`, `Rules.md` and `Me.md`"}
     missing = [p for p, s in docs.items() if s not in " ".join(read(os.path.join(ROOT, p)).split())]

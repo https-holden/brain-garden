@@ -6,15 +6,16 @@ This repo sets people up with an Obsidian second brain. Two kinds of session ope
   `AGENTS.md`: one step at a time, plain words, never ask for a password or token. Their vault
   goes in its own folder (by default `~/Documents/Obsidian/<name>-brain`), never inside this
   repo, and `setup/mac.sh --name <Name> --preset personal|work` makes it without prompts.
-  Once it exists, that vault's own `CLAUDE.md` is the contract, not this file.
+  Once it exists, that vault's own `CLAUDE.md` and `Rules.md` are the contract, not this file.
 - **Changing the seed itself.** The rules below.
 
 ## Changing the seed
 
 - `template/` is what a vault is built from, with `@@TOKENS@@` filled by
   `setup/build_vault.py`. `template/brain/` is always copied; `template/optional/` holds the
-  pieces a flag adds and the `sections/` spliced into a vault's `CLAUDE.md` and `Readme.md`;
-  `template/plugins/` are the optional home-made Obsidian plugins.
+  pieces a flag adds and the `sections/` spliced into a vault's `Rules.md` (with a one-line
+  pointer in its `CLAUDE.md`) and `Readme.md`; `template/plugins/` are the optional home-made
+  Obsidian plugins.
 - Everything a vault runs is Python standard library and must work on Python 3.9 (what Apple's
   Command Line Tools ship). `pypdf` is the one optional extra, and only for PDF text.
 - `starter-vault/` is generated: never edit it by hand. After changing `template/` or

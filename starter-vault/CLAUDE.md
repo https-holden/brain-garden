@@ -60,7 +60,7 @@ Every question uses this order, stopping early when the answer is clear:
    that has every word: `Folder/title :: aliases :: categories :: status`. Titles are claims,
    imperatives and names, so the line often answers on its own. Stale notes are left out unless
    you add `--stale`; `--topic <Topic>` lists one topic's notes. Never list the kind folders
-   instead: the index is the listing, and each query is logged, so a miss shows where a note
+   instead: `.paths/index.txt` is the listing, and each query is logged, so a miss shows where a note
    or an alias is missing.
 2. Frontmatter grep: `categories` for the topic, then any property the ask names.
 3. Full text grep on distinctive strings.
