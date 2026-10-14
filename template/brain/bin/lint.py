@@ -41,6 +41,7 @@ import re
 import sys
 from datetime import date, datetime
 
+sys.dont_write_bytecode = True  # no __pycache__ in the vault's bin/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import find  # noqa: E402
 

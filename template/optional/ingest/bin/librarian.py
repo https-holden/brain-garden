@@ -32,6 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ in the vault's bin/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import find  # noqa: E402
 from ingest import DASHES, END, START, VAULT, rename, waiting_notes  # noqa: E402

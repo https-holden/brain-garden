@@ -24,6 +24,8 @@ import sys
 import tempfile
 import zipfile
 
+# CI has no PYTHONDONTWRITEBYTECODE; run every check the way CI and vault owners do.
+os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEED = os.path.join(ROOT, "setup", "build_vault.py")
 PY = sys.executable
