@@ -903,6 +903,22 @@ def tend_and_nudge(tmp):
                if s not in flat]
     check("tend: reads only the reports, names nothing dormant, and follows the four corrections", not missing,
           "missing %s" % missing)
+    sam = os.path.join(tmp, "sam-brain")
+    config = json.loads(read(os.path.join(sam, "bin", "vault.json")) or "{}")
+    rules = read(os.path.join(sam, "Rules.md"))
+    ref = " ".join(read(os.path.join(sam, ".claude", "skills", "tend", "references", "ingest-report.md")).split())
+    missing = [s for s in ("`cold_days` in `bin/vault.json`", "`## YYYY-MM-DD` headings", "file names",
+                           "Dormant line", "sets a rule tend follows", "## Kept", "a `Decisions.md` entry")
+               if s not in flat]
+    missing += ["vault.json cold_days 90"] if config.get("cold_days") != 90 else []
+    missing += ["Rules.md documents cold_days"] if "`cold_days`" not in rules else []
+    missing += ["ingest-report.md keeps the 60-day gate"] if "60 days" not in ref else []
+    check("tend: Move cold finds candidates by rule and date with cold_days from bin/vault.json, never archives "
+          "its own rules, and every Keep is recorded", not missing, "missing %s" % missing)
+    vocab = rules.split("## Conventions", 1)[-1]
+    missing = [w for w in ("**Pave**", "**Signpost**", "**Hub**", "**Bed**", "**Tend**") if "\n- %s:" % w not in vocab]
+    check("Rules.md conventions carry the rest of the vocabulary, and stay at or below 15,000 chars",
+          not missing and len(rules) <= 15000, "missing %s, %d chars" % (missing, len(rules)))
     sod = read(os.path.join(tmp, "sam-brain", ".claude", "skills", "start-of-day", "SKILL.md"))
     check("start-of-day runs due mode and puts its line at the top of the brief",
           "python3 bin/paths.py due" in sod and "top of the brief" in " ".join(sod.split()), sod[:2500])
@@ -981,6 +997,39 @@ def tend_and_nudge(tmp):
     check("paths: the report caps the session types at 8 and the paved list at 10, each with a count",
           len(re.findall(r"^\| kind-\d\d \|", fixed, re.M)) == 8 and "And 2 more" in fixed
           and paved.count("\n- ") == 10 and "And 2 more" in paved, fixed + paved)
+
+    def asked():
+        led = json.loads(read(os.path.join(vault, ".paths", "ledger.json")) or "{}")
+        return sorted(rel for rel, p in (led.get("paved") or {}).items() if rel in extra and p.get("asked"))
+
+    code, out, drafts, first = report("--pass", "--today", "2026-10-22")
+    marked = asked()
+    code, out, drafts, second = report("--pass", "--today", "2026-10-23")
+    listed = re.findall(r"^- (\S.*?) \(paved", first, re.M), re.findall(r"^- (\S.*?) \(paved", second, re.M)
+    check("paths --pass: of 12 paved notes the pass lists 10 and marks those 10 asked; the next pass lists the "
+          "other 2", len(listed[0]) == 10 and marked == sorted(listed[0]) and sorted(listed[0] + listed[1]) == extra
+          and "And" not in second and asked() == extra, "first %s\nmarked %s\nsecond %s" % (listed[0], marked, listed[1]))
+
+    code, out = seed(tmp, "--preset", "personal", "--dest", "clone-brain", "--name", "Clone Brain", "--owner", "Sam")
+    vault = os.path.join(tmp, "clone-brain")
+    os.makedirs(os.path.join(vault, ".paths", "reports"))
+    for name in ("2026-09-01.md", "2026-10-01.md", "notes.md", "2027-01-01.md"):
+        with open(os.path.join(vault, ".paths", "reports", name), "w", encoding="utf-8") as fh:
+            fh.write("# Paths report\n")
+    code, out = run(paths + ["--today", "2026-10-15"], cwd=vault, env=env)
+    ledger_path = os.path.join(vault, ".paths", "ledger.json")
+    ledger = json.loads(read(ledger_path) or "{}")
+    check("paths: on a fresh clone the last pass is the newest dated report in .paths/reports/ (not a later date)",
+          code == 0 and ledger.get("last_pass") == "2026-10-01"
+          and "Last pass: 2026-10-01" in read(os.path.join(vault, ".paths", "report.md")), out + str(ledger.get("last_pass")))
+    ledger["last_pass"] = None
+    with open(ledger_path, "w", encoding="utf-8") as fh:
+        json.dump(ledger, fh)
+    with open(os.path.join(vault, ".paths", "reports", "2026-10-10.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Paths report\n")
+    code, out = run(paths + ["due", "--today", "2026-11-11"], cwd=vault, env=env)
+    check("paths due: a ledger with no last pass counts the newest dated report as one",
+          code == 0 and "the last pass was 32 days ago" in out and "no pass" not in out, out)
 
     code, out = seed(tmp, "--preset", "personal", "--dest", "due-brain", "--name", "Due Brain", "--owner", "Sam")
     vault = os.path.join(tmp, "due-brain")

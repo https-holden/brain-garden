@@ -13,11 +13,14 @@
 A refresh writes two files and nothing else, both kept on this machine
 (git-ignored): .paths/ledger.json, every footstep so far, and .paths/report.md,
 the report. A pass also saves the report as .paths/reports/YYYY-MM-DD.md, which
-git tracks, so month-over-month change is a diff. It never creates, edits or
-moves a note and writes no frontmatter. In a bed checkout (.bed.json at the
+git tracks, so month-over-month change is a diff. The last pass is the later of
+the ledger's and the newest of those dated reports, so a fresh clone or a
+second machine knows it too. It never creates, edits or moves a note and writes
+no frontmatter. In a bed checkout (.bed.json at the
 vault root) it prints nothing and exits, whatever the mode.
 
-`due` reads only the ledger and file sizes and writes nothing. Its one line
+`due` reads only the ledger, the dated report names and file sizes, and writes
+nothing. Its one line
 names every reason that applies: the last refresh is more than 7 days old; the
 last pass is more than 30 days old, or there has been none and the first
 refresh is more than 30 days old; a file a session loads without asking is
@@ -27,8 +30,9 @@ only the budget reason applies. The Claude Code SessionStart hook and the
 
 A paved note (Pave in `tend`: checked, shortened, linked from its topic's
 "Start here") is never again listed under drafts wanting paving. It is listed
-under "Paved, waiting for your verify" from the day after the pave until the
-first pass on a later day, which marks it asked, so the owner is asked once.
+under "Paved, waiting for your verify" from the day after the pave until a pass
+lists it, which marks it asked, so the owner is asked once. The list shows ten
+at a time; the rest wait for the next pass.
 
 A footstep is one read, write or lookup hit of a vault file. The sources, each
 optional, are named at the top of the report:
@@ -503,7 +507,7 @@ def refresh(root, today, extra):
             m["last"] = max(m["last"], day)
 
     ledger = {
-        "version": 1, "refreshed": today.isoformat(), "last_pass": old.get("last_pass"),
+        "version": 1, "refreshed": today.isoformat(), "last_pass": last_pass(root, old, today),
         "first_refresh": old.get("first_refresh") or old.get("refreshed") or today.isoformat(),
         "paved": paved_of(old),
         "sources": {"transcripts": found, "sessions": len(sessions),
@@ -514,6 +518,21 @@ def refresh(root, today, extra):
     }
     save(root, ledger)
     return ledger, opened, len(files) - len([p for p in files if p in fresh])
+
+
+def last_pass(root, ledger, today):
+    """The later of the ledger's last pass and the newest dated report in .paths/reports/ (not after today):
+    a fresh clone or a second machine has the reports, which git carries, but not the ledger."""
+    days = [ledger.get("last_pass")] if isinstance(ledger.get("last_pass"), str) else []
+    try:
+        names = os.listdir(os.path.join(root, REPORTS))
+    except OSError:
+        names = []
+    for name in names:
+        when = age(name[:10], today) if re.match(r"^\d{4}-\d{2}-\d{2}\.md$", name) else None
+        if when is not None and when >= 0:
+            days.append(name[:10])
+    return max(days) if days else None
 
 
 def save(root, ledger):
@@ -745,7 +764,7 @@ def due(root, today):
     if refreshed is not None:  # with no ledger, only the budgets speak
         if refreshed > REFRESH_DAYS:
             reasons.append("the paths report is %d days old" % refreshed)
-        last, first = age(ledger.get("last_pass"), today), age(ledger.get("first_refresh"), today)
+        last, first = age(last_pass(root, ledger, today), today), age(ledger.get("first_refresh"), today)
         first = refreshed if first is None else first
         if last is not None and last > PASS_DAYS:
             reasons.append("the last pass was %d days ago" % last)
@@ -803,7 +822,7 @@ def main():
         with open(os.path.join(VAULT, REPORTS, today.isoformat() + ".md"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
         saved = ", saved as .paths/reports/%s.md" % today.isoformat()
-        for rel, _ in waiting_verify(VAULT, ledger, today):
+        for rel, _ in waiting_verify(VAULT, ledger, today)[:TOP_LIST]:  # the ones the report listed, asked now
             ledger["paved"][rel]["asked"] = today.isoformat()
     if paved or args.pass_:
         save(VAULT, ledger)

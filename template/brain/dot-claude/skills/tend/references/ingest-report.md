@@ -9,7 +9,7 @@ Read when `bin/ingest.py` exists: `python3 bin/ingest.py report` is the evidence
 |---|---|
 | Where things come from | a source whose notes go unused: `Keep?: no` in `Sources.md`. Listed first |
 | Sources due | pull now (`harvest` has the method), or change the cadence |
-| Unused clippings | `trash` (it refuses anything linked or written on), or Keep with a reason |
+| Unused clippings | while the paths report's ledger is under 60 days old ("Ledger started"), none by name: Move cold gives their count. After that, `trash` (it refuses anything linked or written on), or Keep with a reason |
 | Waiting too long | file now (`file-clippings`), or trash if no longer wanted |
 | Old drafts | a hot one is already under Pave; otherwise the owner verifies it, you rewrite it, or the owner deletes it |
 | Stale notes | rewrite from the newer evidence, or the owner deletes it |

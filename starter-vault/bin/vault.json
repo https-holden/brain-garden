@@ -18,6 +18,7 @@
   },
   "draft_max_days": 14,
   "now_max_days": 14,
+  "cold_days": 90,
   "dash_exempt": [
     ".obsidian/",
     ".git/",
