@@ -1275,6 +1275,23 @@ def hubs(tmp):
     check("kepano-method lists Start here on hubs as a deliberate divergence", "## Start here" in kepano, kepano)
 
 
+def sha(data):
+    """What bin/seed-manifest.json records for a file's bytes."""
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def raw(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def put(root, rel, data):
+    path = os.path.join(root, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as fh:
+        fh.write(data.encode("utf-8") if isinstance(data, str) else data)
+
+
 def upgrade(tmp):
     """build_vault.py --upgrade. Planting writes bin/seed-manifest.json, and a rerun leaves it alone. An old
     vault (planted today, then stripped of what tickets 01 to 07 added, its manifest gone and the old monthly
@@ -1283,19 +1300,6 @@ def upgrade(tmp):
     upgrade is a no-op; lint passes after."""
     tmp = os.path.realpath(tmp)
     template = os.path.join(ROOT, "template", "brain")
-
-    def sha(data):
-        return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
-
-    def raw(path):
-        with open(path, "rb") as fh:
-            return fh.read()
-
-    def put(vault, rel, data):
-        path = os.path.join(vault, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            fh.write(data.encode("utf-8") if isinstance(data, str) else data)
 
     def up(vault, *more):
         return seed(tmp, "--upgrade", "--dest", vault, *more)
@@ -1431,11 +1435,21 @@ def upgrade(tmp):
     put(vault, "CLAUDE.md", read(os.path.join(vault, "CLAUDE.md")) + "\n## Sam's own rule\n\nShort answers.\n")
     put(vault, "Knowledge/Rest beats caffeine.md", "---\ncategories: []\ncreated: 2026-10-01\nstatus: draft\n"
         "source: \"\"\n---\nRest first.\n")
+    # As if the seed had changed these since planting: root documents, templates and kind Bases stay the owner's.
+    owners = ["Home.md", "Readme.md", "Decisions.md", "Rules.md", "Now.md", "Templates/Knowledge Template.md",
+              "Templates/Topic Template.md", "Templates/Bases/Knowledge.base", ".obsidian/app.json"]
+    for rel in owners:
+        put(vault, rel, raw(os.path.join(vault, rel)) + b"\nAn older seed's line.\n")
     shutil.rmtree(os.path.join(vault, "Categories"))
     os.remove(os.path.join(vault, ".paths", "index.txt"))
     tree = files_in(vault)
+    code, out = up(vault, "--dry-run")
+    check("upgrade --dry-run on a vault with a manifest changes nothing (every file hashed before and after)",
+          code == 0 and files_in(vault) == tree and kepano in out and "nothing written" in out, out)
     code, out = up(vault)
     after = files_in(vault)
+    check("a root document, a template or a kind Base that differs from the seed's stays byte for byte, with no .new",
+          all(after.get(rel) == tree[rel] and rel + ".new" not in after for rel in owners), out)
     check("an unedited seed file is replaced with the seed's current one",
           after.get(kepano) == raw(os.path.join(template, "dot-claude", "skills", "kepano-method", "SKILL.md"))
           and kepano in out, out)
@@ -1459,10 +1473,151 @@ def upgrade(tmp):
     check("a second upgrade of that vault is a no-op too", code == 0 and files_in(vault) == tree
           and "nothing to upgrade" in out, out)
 
+    # A .new the owner has half merged is never overwritten: the newer one goes beside it.
+    half = b"Half merged by Sam.\n"
+    put(vault, "bin/find.py.new", half)
+    put(vault, "CLAUDE.md.new", half)
+    manifest = json.loads(read(os.path.join(vault, "bin", "seed-manifest.json")))
+    manifest["files"]["bin/find.py"] = sha(b"find.py as the seed shipped it last time\n")
+    manifest["claude_md"] = sha(b"CLAUDE.md as the seed wrote it last time\n")
+    put(vault, "bin/seed-manifest.json", json.dumps(manifest, indent=2) + "\n")
+    code, out = up(vault)
+    after = files_in(vault)
+    check("an existing .new is never overwritten: the newer one is written beside it as .new2 and both are listed",
+          after.get("bin/find.py.new") == half and after.get("CLAUDE.md.new") == half
+          and after.get("bin/find.py.new2") == raw(os.path.join(template, "bin", "find.py"))
+          and "CLAUDE.md.new2" in after and all(n in out for n in ("bin/find.py.new2", "bin/find.py.new ",
+                                                                 "CLAUDE.md.new2", "CLAUDE.md.new ")), out)
+
     missing = [doc for doc in ("README.md", "AGENTS.md")
                if not all(s in read(os.path.join(ROOT, doc)) for s in ("--upgrade", "--dry-run", ".new"))]
     check("README.md and AGENTS.md say how to update a vault: --upgrade, a dry run first, then the .new files",
           not missing, ", ".join(missing))
+
+
+def upgrade_safety(tmp):
+    """build_vault.py --upgrade never writes through a symlink or into a hardlinked file's twin; works out the
+    vault's path with symlinked parents resolved, in planting too; compares with the tokens recorded at planting,
+    so a git init after planting (the mac.sh order) changes nothing; refuses a seed older than the one that
+    planted the vault; keeps bin/vault.json's indent and non-ASCII text; and reads a garbage manifest as none.
+    A plain rerun on a vault with no manifest writes none."""
+    tmp = os.path.realpath(tmp)
+    template = os.path.join(ROOT, "template", "brain")
+    env = git_env(tmp)
+    git = shutil.which("git")
+
+    def up(vault, *more):
+        return seed(tmp, "--upgrade", "--dest", vault, *more)
+
+    # Symlinks and a hardlink, every target outside the vault.
+    code, out = seed(tmp, "--preset", "personal", "--dest", "link-brain", "--name", "Link Brain", "--owner", "Sam")
+    vault, outside = os.path.join(tmp, "link-brain"), os.path.join(tmp, "shared")
+    mpath = os.path.join(vault, "bin", "seed-manifest.json")
+    manifest = json.loads(read(mpath))
+    shutil.rmtree(os.path.join(vault, ".claude", "skills"))
+    put(outside, "skills/other/SKILL.md", "Someone else's skill.\n")
+    os.symlink(os.path.join(outside, "skills"), os.path.join(vault, ".claude", "skills"))
+    for rel, target in (("bin/find.py", "find-target.py"), ("Rules.md", "rules-target.md")):
+        os.remove(os.path.join(vault, rel))
+        os.symlink(os.path.join(outside, target), os.path.join(vault, rel))  # dangling
+    for rel, link in (("bin/paths.py", os.symlink), ("bin/beds.py", os.link)):
+        older = ("%s as an older seed shipped it\n" % rel).encode("utf-8")
+        put(outside, os.path.basename(rel), older)
+        os.remove(os.path.join(vault, rel))
+        link(os.path.join(outside, os.path.basename(rel)), os.path.join(vault, rel))
+        manifest["files"][rel] = sha(older)  # unedited: an upgrade would replace it
+    put(vault, "bin/lint.py", raw(os.path.join(vault, "bin", "lint.py")) + b"# Sam: mine\n")
+    manifest["files"]["bin/lint.py"] = sha(b"lint.py as an older seed shipped it\n")  # edited: it gets a .new
+    put(outside, "lint-new.py", "Not the seed's.\n")
+    os.symlink(os.path.join(outside, "lint-new.py"), os.path.join(vault, "bin", "lint.py.new"))
+    put(vault, "bin/seed-manifest.json", json.dumps(manifest, indent=2) + "\n")
+    shared = files_in(outside)
+    code, out = up(vault)
+    links = [".claude/skills", "bin/find.py", "Rules.md", "bin/paths.py", "bin/lint.py.new"]
+    check("upgrade never writes through a symlink (a linked skills folder, dangling links, a linked seed file, a "
+          "linked .new): each is left alone and listed, and nothing outside the vault changes",
+          code == 0 and files_in(outside) == shared and all(os.path.islink(os.path.join(vault, r)) for r in links)
+          and all("%s  (left alone: symlink)" % r in out for r in links), out)
+    beds = os.path.join(vault, "bin", "beds.py")
+    check("upgrade replaces a hardlinked seed file by a new file, so its twin outside is untouched",
+          raw(beds) == raw(os.path.join(template, "bin", "beds.py")) and os.stat(beds).st_nlink == 1
+          and raw(os.path.join(outside, "beds.py")) == b"bin/beds.py as an older seed shipped it\n", out)
+
+    if git:
+        # A symlinked parent folder (an iCloud link, say) over a git repo holding the vault.
+        repo = os.path.join(tmp, "cloud", "notes-repo")
+        os.makedirs(repo)
+        run([git, "init", "-q"], cwd=repo, env=env)
+        os.symlink(os.path.join(tmp, "cloud"), os.path.join(tmp, "ObsLink"))
+        via = os.path.join(tmp, "ObsLink", "notes-repo", "sam-brain")
+        code, out = seed(tmp, "--preset", "personal", "--dest", via, "--name", "Sam's Brain", "--owner", "Sam")
+        settings = json.loads(read(os.path.join(repo, ".claude", "settings.json")) or "{}")
+        rules = settings.get("permissions", {}).get("allow", [])
+        check("planting through a symlinked parent folder works out the vault's path inside its repo",
+              code == 0 and settings.get("hooks", {}).get("SessionStart") == [{"matcher": "startup", "hooks": [
+                  {"type": "command", "command": "python3 sam-brain/bin/paths.py due --hook"}]}]
+              and rules and all(r.startswith("Bash(python3 sam-brain/bin/") for r in rules), json.dumps(settings))
+        before = files_in(repo)
+        code, out = up(via)
+        check("upgrade through the symlinked parent changes nothing: no second hook, no duplicate allow rule, no "
+              "CLAUDE.md.new", code == 0 and files_in(repo) == before and "nothing to upgrade" in out, out)
+
+        # The mac.sh order: plant, then git init.
+        code, out = seed(tmp, "--preset", "personal", "--dest", "git-brain", "--name", "Git Brain", "--owner", "Sam")
+        vault = os.path.join(tmp, "git-brain")
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "Plant"]):
+            run([git] + args, cwd=vault, env=env)
+        before = files_in(vault)
+        code, out = up(vault)
+        check("a vault git-initialised after planting (the mac.sh order) has nothing to upgrade, and no CLAUDE.md.new",
+              code == 0 and files_in(vault) == before and "nothing to upgrade" in out, out)
+
+        # A seed older than the one that planted the vault is refused.
+        copy = os.path.join(tmp, "seed-copy")
+        for part in ("setup", "template"):
+            shutil.copytree(os.path.join(ROOT, part), os.path.join(copy, part),
+                            ignore=shutil.ignore_patterns("__pycache__", ".DS_Store"))
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "One"], ["commit", "-q", "--allow-empty", "-m", "Two"]):
+            run([git] + args, cwd=copy, env=env)
+        builder = os.path.join(copy, "setup", "build_vault.py")
+        newer = os.path.join(tmp, "newer-brain")
+        code, out = run([PY, builder, "--preset", "personal", "--dest", newer, "--name", "Newer Brain", "--owner", "Sam"],
+                        cwd=tmp, env=env)
+        run([git, "checkout", "-q", "HEAD~1"], cwd=copy, env=env)
+        before = files_in(newer)
+        code, out = run([PY, builder, "--upgrade", "--dest", newer], cwd=tmp, env=env)
+        check("upgrade refuses a seed older than the one that planted the vault, and writes nothing",
+              code == 1 and files_in(newer) == before and "is older than the one that planted" in out, out)
+    else:
+        print("skip  upgrade checks that need git (no git on this machine)")
+
+    # A plain rerun of the builder on a vault with no manifest records nothing.
+    args = ["--preset", "personal", "--dest", "rerun-brain", "--name", "Rerun Brain", "--owner", "Sam"]
+    seed(tmp, *args)
+    mpath = os.path.join(tmp, "rerun-brain", "bin", "seed-manifest.json")
+    os.remove(mpath)
+    code, out = seed(tmp, *args)
+    check("a plain rerun on a vault with no manifest writes none and says to run --upgrade",
+          code == 0 and not os.path.exists(mpath) and "--upgrade" in out, out)
+
+    # bin/vault.json keeps its style; a garbage manifest is read as none.
+    code, out = seed(tmp, "--preset", "personal", "--dest", "style-brain", "--name", "Style Brain", "--owner", "Sam")
+    vault = os.path.join(tmp, "style-brain")
+    config = json.loads(read(os.path.join(vault, "bin", "vault.json")))
+    budgets = config.pop("budgets")
+    config["garden"] = "café au lait"
+    put(vault, "bin/vault.json", json.dumps(config, indent=4, ensure_ascii=False) + "\n")
+    code, out = up(vault)
+    check("upgrade keeps bin/vault.json's indent and non-ASCII text when it adds the budgets",
+          code == 0 and read(os.path.join(vault, "bin", "vault.json"))
+          == json.dumps(dict(config, budgets=budgets), indent=4, ensure_ascii=False) + "\n", out)
+    put(vault, "bin/seed-manifest.json", '{"seed": 7, "planted": "2026-10-01", "files": [], "claude_md": 5, '
+        '"options": {"name": "Style Brain", "kinds": ["../../outside"], "plugins": "all"}}\n')
+    code, out = up(vault)
+    recorded = json.loads(read(os.path.join(vault, "bin", "seed-manifest.json")) or "{}")
+    check("a garbage manifest is read as none, with a warning, and the upgrade records a good one",
+          code == 0 and "Traceback" not in out and "not a manifest" in out and "inferred" in out
+          and isinstance(recorded.get("files"), dict) and "bin/find.py" in recorded["files"], out)
 
 
 def plugins(tmp):
@@ -1957,6 +2112,7 @@ def main():
         tend_and_nudge(tmp)
         plugins(tmp)
         upgrade(tmp)
+        upgrade_safety(tmp)
     recipe_guard()
     tend_docs()
 

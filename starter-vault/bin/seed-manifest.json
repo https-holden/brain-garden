@@ -19,6 +19,10 @@
     "plugins": [],
     "accent": null
   },
+  "location": {
+    "vault_path": "the top of this folder",
+    "prefix": ""
+  },
   "claude_md": "98906f256b355a702406d0913440b7fa9d66017f74791e3e195b75cf976cbf92",
   "files": {
     ".claude/skills/end-of-day/SKILL.md": "4c0a46b78aec9ffbfec437690a67af85f129f1cec473236921e5c6b5147f1dbb",
