@@ -102,9 +102,11 @@ seed's own files you never edited, which it knows from `bin/seed-manifest.json`,
 planting. It never touches a note, a template or the content of a root document. A seed file
 you did edit stays as it is, with the seed's new version beside it as `<file>.new`; a changed
 `CLAUDE.md` comes as `CLAUDE.md.new`. Ask your AI to merge each `.new` with you as a numbered
-list, then delete it. A skill the seed has retired is listed, never deleted. A vault planted
-before the manifest existed works too: the builder reads its options from the vault and says
-what it found. Run it again and it says there is nothing to upgrade.
+list, then delete it. An earlier `.new` you have not finished merging is never overwritten:
+the newer one goes beside it as `.new2`. A skill the seed has retired is listed, never
+deleted, and a symlink is left alone and listed. A vault planted before the manifest existed
+works too: the builder reads its options from the vault and says what it found. Run it again
+and it says there is nothing to upgrade; run it from an older copy of the seed and it refuses.
 
 ## What is in this repo
 

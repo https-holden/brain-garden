@@ -194,8 +194,9 @@ it up to date with the builder. One step at a time, as always:
    `python3 ~/brain-garden/setup/build_vault.py --upgrade --dest <their vault folder> --dry-run`
 4. Then the same command without `--dry-run`.
 5. For each `.new` file it lists (`CLAUDE.md.new`, or `bin/lint.py.new` beside a script they
-   edited), show them what it changes as a numbered list, merge what they approve into the file
-   beside it, then delete the `.new`. Then run `python3 bin/lint.py` in the vault and commit.
+   edited, and `.new2` when an earlier `.new` was still there), show them what it changes as a
+   numbered list, merge what they approve into the file beside it, then delete the `.new`. Then
+   run `python3 bin/lint.py` in the vault and commit.
 
 It never touches a note, a template or a root document's content, and never deletes anything:
 a skill the seed retired is listed for them to remove when they are ready. Running it again

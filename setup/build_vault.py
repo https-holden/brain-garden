@@ -33,6 +33,11 @@ Rules it keeps:
   .gitignore and the hooks and permissions to settings, never changing what is
   there; and never touches a note, a template or a root document's content. A
   vault with no manifest has its options read from its own files.
+- An upgrade never writes through a symlink (it lists the link and leaves it),
+  writes each file through a temporary file so a hardlink is cut, never
+  overwrites an earlier .new (the newer one is .new2 beside it), compares with
+  the location the vault was planted at, and refuses a seed older than the one
+  the manifest records.
 - The vault's folder carries a name. Obsidian lists a vault by its folder name
   and nothing else, so a folder called `vault` or `brain` is refused.
 """
@@ -527,32 +532,39 @@ def add_plugins(seeder, dest, plugins, tokens):
 # ------------------------------------------------------------ planting
 
 
-def vault_tokens(opts, dest, date):
-    """The tokens for a vault at dest, and the folder its .claude/settings.json lives in (the git
-    repo's root when the vault sits inside one, else the vault)."""
-    repo = git_root(dest)
-    repo_root = repo or dest
-    vault_path = os.path.relpath(dest, repo_root)
-    prefix = "" if vault_path == "." else vault_path.replace(os.sep, "/") + "/"
-    tokens = dict(
-        VAULT_NAME=opts["name"], PROJECT=opts["project"],
-        VAULT_PATH=("`%s`" % prefix if prefix else "the repo root" if repo else "the top of this folder"),
-        VAULT_PREFIX=prefix, DATE=date, OWNER=opts["owner"], HOME_NOTE="Home",
-    )
-    return tokens, repo_root
+def vault_location(dest):
+    """Where a vault at dest sits: the folder its .claude/settings.json lives in (the git repo's root
+    when the vault is inside one, else the vault), the vault's prefix from there, and the words
+    CLAUDE.md uses for it. Both sides are resolved first, so a symlinked parent folder never makes
+    the prefix a ../../ path."""
+    real = os.path.realpath(dest)
+    repo = git_root(real)
+    repo_root = os.path.realpath(repo) if repo else real
+    rel = os.path.relpath(real, repo_root)
+    prefix = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+    vault_path = "`%s`" % prefix if prefix else "the repo root" if repo else "the top of this folder"
+    return repo_root, prefix, vault_path
 
 
-def plant(seeder, dest, opts, tokens, settings_root):
-    """Plant the vault opts describe at dest. Returns the allow rules and the SessionStart command
-    merged into settings_root's .claude/settings.json, so an upgrade can merge the same."""
-    kinds, prefix = opts["kinds"], tokens["VAULT_PREFIX"]
-    seed_brain(seeder, dest, tokens, kinds, opts["working_memory"], opts["me"])
+def vault_tokens(opts, date, prefix, vault_path):
+    return dict(VAULT_NAME=opts["name"], PROJECT=opts["project"], VAULT_PATH=vault_path,
+                VAULT_PREFIX=prefix, DATE=date, OWNER=opts["owner"], HOME_NOTE="Home")
+
+
+def settings_for(kinds, prefix):
+    """The allow rules and the SessionStart command a vault at prefix gets in .claude/settings.json."""
     allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix,
              "Bash(python3 %sbin/paths.py:*)" % prefix]
     if "Clippings" in kinds:
         allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
     # The nudge: on startup Claude Code runs due mode, which prints one line only when tend is due.
-    start_cmd = "python3 %s due --hook" % shlex.quote(prefix + "bin/paths.py")
+    return allow, "python3 %s due --hook" % shlex.quote(prefix + "bin/paths.py")
+
+
+def plant(seeder, dest, opts, tokens, settings_root):
+    """Plant the vault opts describe at dest, its settings merged into settings_root."""
+    seed_brain(seeder, dest, tokens, opts["kinds"], opts["working_memory"], opts["me"])
+    allow, start_cmd = settings_for(opts["kinds"], tokens["VAULT_PREFIX"])
     merge_settings(seeder, settings_root, allow=allow, start_cmd=start_cmd)
     if opts["plugins"]:
         add_plugins(seeder, dest, opts["plugins"], tokens)
@@ -567,7 +579,6 @@ def plant(seeder, dest, opts, tokens, settings_root):
             if not there:  # once: a rerun with the same accent leaves the snippet as it is
                 with open(css, "a", encoding="utf-8") as fh:
                     fh.write(extra)
-    return allow, start_cmd
 
 
 # ------------------------------------------------------------ the manifest and upgrades
@@ -599,12 +610,15 @@ def sha(data):
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
+def no_git_env():
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
 def seed_commit():
     """This seed's git commit, or "unknown" when it is not a git checkout (a ZIP download)."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         out = subprocess.run(["git", "-C", SKILL_DIR, "rev-parse", "--show-toplevel", "HEAD"],
-                             capture_output=True, text=True, timeout=10, env=env)
+                             capture_output=True, text=True, timeout=10, env=no_git_env())
     except (OSError, subprocess.SubprocessError):
         return "unknown"
     lines = out.stdout.split()
@@ -613,49 +627,115 @@ def seed_commit():
     return lines[1]
 
 
-def manifest_text(commit, planted, opts, claude_md, files):
+def older_seed(commit, recorded):
+    """True when this seed's commit is a strict ancestor of the one recorded in the vault's manifest.
+    False when either is unknown or "starter", or git cannot tell."""
+    if commit == recorded or {commit, recorded} & {"unknown", "starter", ""}:
+        return False
+    try:
+        out = subprocess.run(["git", "-C", SKILL_DIR, "merge-base", "--is-ancestor", commit, recorded],
+                             capture_output=True, text=True, timeout=10, env=no_git_env())
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0
+
+
+def manifest_text(commit, planted, opts, location, claude_md, files):
     return json.dumps({
         "about": "Written by Brain Garden's setup/build_vault.py. --upgrade reads it to tell the seed's "
                  "files you never edited from the ones you did. Not for editing by hand.",
-        "seed": commit, "planted": planted, "options": opts, "claude_md": claude_md,
+        "seed": commit, "planted": planted, "options": opts, "location": location, "claude_md": claude_md,
         "files": dict(sorted(files.items())),
     }, indent=2) + "\n"
 
 
-def manifest_for(seeder, dest, opts, planted, commit):
+def manifest_for(seeder, dest, opts, tokens, commit):
     """The manifest for a vault just planted at dest: a hash of what the seed has for each file it
-    owns (not what is on disk, so a file kept from before is never mistaken for the seed's)."""
+    owns (not what is on disk, so a file kept from before is never mistaken for the seed's), and the
+    location tokens it was rendered with, so an upgrade compares like with like."""
     files = {}
     for path, data in seeder.wrote.items():
         rel = os.path.relpath(path, dest).replace(os.sep, "/")
         if not rel.startswith("../") and seed_owned(rel, opts["kinds"]):
             files[rel] = sha(data)
     claude = sha(seeder.wrote.get(os.path.join(dest, "CLAUDE.md"), b""))
-    return manifest_text(commit, planted, opts, claude, files)
+    location = dict(vault_path=tokens["VAULT_PATH"], prefix=tokens["VAULT_PREFIX"])
+    return manifest_text(commit, tokens["DATE"], opts, location, claude, files)
+
+
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}$")
+HEX_RE = re.compile(r"[0-9a-f]{64}$")
+
+
+def options_problem(opts):
+    """Why opts cannot plant a vault, or None. Kinds become folders, so each is one plain name."""
+    if not isinstance(opts, dict):
+        return "the options are not a table"
+    for key in ("name", "owner", "project"):
+        if not isinstance(opts.get(key), str) or not opts[key].strip():
+            return "no %s" % key
+    kinds = opts.get("kinds")
+    if not isinstance(kinds, list) or not kinds or not all(
+            isinstance(k, str) and k.strip() == k and k and not k.startswith(".") and not re.search(r"[/\\:]", k)
+            for k in kinds):
+        return "kinds must be plain folder names"
+    if not isinstance(opts.get("working_memory"), bool) or not isinstance(opts.get("me"), bool):
+        return "working_memory and me must be true or false"
+    plugins = opts.get("plugins")
+    if not isinstance(plugins, list) or not all(p in KNOWN_PLUGINS for p in plugins):
+        return "plugins must be bundled ones"
+    accent = opts.get("accent")
+    if accent is not None and not (isinstance(accent, str) and re.match(r"#[0-9a-fA-F]{6}$", accent)):
+        return "accent must be #rrggbb"
+    if opts.get("preset") is not None and not isinstance(opts.get("preset"), str):
+        return "preset must be a name"
+    return None
+
+
+def manifest_problem(old):
+    """Why old is not a manifest this builder can use, or None."""
+    if not isinstance(old, dict):
+        return "not a table"
+    if not isinstance(old.get("seed"), str) or not isinstance(old.get("planted"), str) \
+            or not DATE_RE.match(old["planted"]):
+        return "no seed or planting date"
+    files = old.get("files")
+    if not isinstance(files, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) and HEX_RE.match(v) and ".." not in k.split("/")
+            and not k.startswith("/") for k, v in files.items()):
+        return "files must map paths to sha256 hashes"
+    if old.get("claude_md") is not None and not (isinstance(old["claude_md"], str) and HEX_RE.match(old["claude_md"])):
+        return "claude_md must be a sha256 hash"
+    location = old.get("location")
+    if location is not None and not (isinstance(location, dict) and isinstance(location.get("vault_path"), str)
+                                     and isinstance(location.get("prefix"), str)):
+        return "location must hold vault_path and prefix"
+    return options_problem(old.get("options"))
+
+
+def read_text(dest, rel):
+    path = os.path.join(dest, rel)
+    if not os.path.isfile(path):
+        return ""
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
 
 
 def infer_options(dest):
     """The options a vault with no manifest was planted with, read from its own files, and its date."""
-    def text(rel):
-        path = os.path.join(dest, rel)
-        if not os.path.exists(path):
-            return ""
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-
-    claude = text("CLAUDE.md")
+    claude = read_text(dest, "CLAUDE.md")
     flat = " ".join(claude.split())
     name = claude.split("\n", 1)[0].lstrip("#").strip()
     owner = re.search(r"not laws; (.+?) changes any of them", flat)
     owner = owner.group(1) if owner else "the owner"
     project = re.search(r"a second brain for (.+?)\. Kepano method", flat)
     planted = (re.search(r"Planted (\d{4}-\d{2}-\d{2})", flat)
-               or re.search(r"^## (\d{4}-\d{2}-\d{2}) Planted from", text("Decisions.md"), re.M))
+               or re.search(r"^## (\d{4}-\d{2}-\d{2}) Planted from", read_text(dest, "Decisions.md"), re.M))
     try:
-        kinds = list(json.loads(text(os.path.join("bin", "vault.json"))).get("kinds", {}))
-    except ValueError:
+        kinds = list(json.loads(read_text(dest, os.path.join("bin", "vault.json"))).get("kinds", {}))
+    except (ValueError, AttributeError):
         kinds = []
-    css = text(os.path.join(".obsidian", "snippets", "vault.css")).split("The vault's accent", 1)
+    css = read_text(dest, os.path.join(".obsidian", "snippets", "vault.css")).split("The vault's accent", 1)
     hsl = re.search(r"--accent-h: (\d+);\s*--accent-s: (\d+)%;\s*--accent-l: (\d+)%;", css[1]) if len(css) > 1 else None
     accent = None
     if hsl:  # back to the #rrggbb that writes the same three numbers
@@ -669,6 +749,16 @@ def infer_options(dest):
         plugins=[p for p in KNOWN_PLUGINS if os.path.isdir(os.path.join(dest, ".obsidian", "plugins", p))],
         accent=accent)
     return opts, planted.group(1) if planted else datetime.date.today().isoformat()
+
+
+def infer_location(dest):
+    """The vault_path and prefix CLAUDE.md was rendered with, read from its first paragraph, or None."""
+    found = re.search(r"An Obsidian vault at (.+?): a second brain for", " ".join(read_text(dest, "CLAUDE.md").split()))
+    if not found:
+        return None
+    vault_path = found.group(1)
+    prefix = vault_path.strip("`") if vault_path.startswith("`") and vault_path.endswith("/`") else ""
+    return dict(vault_path=vault_path, prefix=prefix)
 
 
 def files_under(root):
@@ -687,8 +777,19 @@ def read_bytes(path):
         return fh.read()
 
 
+def link_in(root, rel):
+    """The first part of rel, from root down, that is a symlink (dangling or not), or None."""
+    path, parts = root, rel.split("/")
+    for n, part in enumerate(parts):
+        path = os.path.join(path, part)
+        if os.path.islink(path):
+            return "/".join(parts[:n + 1])
+    return None
+
+
 def upgrade(dest, dry, commit):
     """Bring the vault at dest up to this seed. See the module docstring for the rules."""
+    dest = os.path.realpath(dest)
     if not (os.path.isfile(os.path.join(dest, "CLAUDE.md")) and os.path.isfile(os.path.join(dest, "bin", "vault.json"))):
         print("build: %s is not a planted vault (no CLAUDE.md or bin/vault.json); nothing to upgrade" % dest)
         return 1
@@ -696,15 +797,28 @@ def upgrade(dest, dry, commit):
         print("build: %s is a bed, not a brain: upgrade the brain it was sent from" % dest)
         return 1
     old = None
-    if os.path.exists(os.path.join(dest, MANIFEST)):
-        try:
-            old = json.loads(read_bytes(os.path.join(dest, MANIFEST)).decode("utf-8"))
-            opts, planted = old["options"], old["planted"]
-        except (ValueError, KeyError, TypeError):
-            print("build: %s is not a manifest this builder can read; reading the vault instead" % MANIFEST)
+    if os.path.lexists(os.path.join(dest, *MANIFEST.split("/"))):
+        problem = "a symlink" if link_in(dest, MANIFEST) else None
+        if not problem:
+            try:
+                old = json.loads(read_bytes(os.path.join(dest, *MANIFEST.split("/"))).decode("utf-8"))
+                problem = manifest_problem(old)
+            except (ValueError, UnicodeDecodeError, OSError):
+                problem = "not JSON"
+        if problem:
+            print("build: warning: %s is not a manifest this builder can read (%s); reading the vault instead"
+                  % (MANIFEST, problem))
             old = None
-    if old is None:
+    if old is not None:
+        opts, planted, recorded, claude_seen = old["options"], old["planted"], old["files"], old.get("claude_md")
+        location = old.get("location") or infer_location(dest)
+        if older_seed(commit, old["seed"]):
+            print("build: this seed (%s) is older than the one that planted or last upgraded the vault (%s); "
+                  "nothing written. Get the latest with --self-update, then upgrade." % (commit[:12], old["seed"][:12]))
+            return 1
+    else:
         opts, planted = infer_options(dest)
+        recorded, claude_seen, location = {}, None, infer_location(dest)
         print("build: no %s (the vault was planted before upgrades existed), so it was inferred from the vault:"
               % MANIFEST)
         print('      name "%s", owner "%s", project "%s", planted %s'
@@ -712,48 +826,87 @@ def upgrade(dest, dry, commit):
         print("      kinds %s; Now.md %s; Me.md %s; plugins %s; accent %s" % (
             ", ".join(opts["kinds"]) or "none", "yes" if opts["working_memory"] else "no",
             "yes" if opts["me"] else "no", ", ".join(opts["plugins"]) or "none", opts["accent"] or "none"))
-    recorded = (old or {}).get("files") or {}
-    claude_seen = (old or {}).get("claude_md")
-    tokens, repo_root = vault_tokens(opts, dest, planted)
+        problem = options_problem(opts)
+        if problem:
+            print("build: cannot rebuild this vault from what it holds (%s); nothing written" % problem)
+            return 1
+    # Settings and the hook follow where the vault is today; the comparison copy is rendered with the
+    # location tokens it was planted with, so a git init or a move since is not mistaken for a seed change.
+    repo_root, prefix, vault_path = vault_location(dest)
+    location = location or dict(vault_path=vault_path, prefix=prefix)
+    tokens = vault_tokens(opts, planted, location["prefix"], location["vault_path"])
     seeder = Seeder(dry)
     counts = dict(added=0, replaced=0, new=0)
-    news, retired, changed = [], [], False
+    news, retired, links, held, changed = [], [], set(), set(), False
+
+    def blocked(rel, root=dest):
+        """True, and the link noted, when writing rel would go through a symlink."""
+        link = link_in(root, rel)
+        if link:
+            links.add(link)
+        return bool(link)
 
     def write(rel, data, mode_from=None):
+        """Write through a temporary file and os.replace: never through a link, and a hardlink is cut."""
         if dry:
             return
         path = os.path.join(dest, *rel.split("/"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            fh.write(data)
-        if mode_from:
-            shutil.copymode(mode_from, path)
+        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".upgrade-")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+            if mode_from:
+                shutil.copymode(mode_from, tmp_path)
+            elif os.path.isfile(path):
+                shutil.copymode(path, tmp_path)
+            else:
+                os.chmod(tmp_path, 0o644)
+            os.replace(tmp_path, path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def offer(rel, data, src, known):
-        """The seed's version beside the owner's, as <file>.new, unless it is there already."""
-        path = os.path.join(dest, *(rel + ".new").split("/"))
-        if os.path.exists(path) and sha(read_bytes(path)) == sha(data):
-            return False
-        write(rel + ".new", data, src)
-        news.append(rel + ".new")
-        print("  ! %s.new  (%s)" % (rel, "edited here since planting; the seed's version is beside it" if known
-                                    else "differs from the seed's, with no record of what was planted"))
+        """The seed's version beside the owner's, as <file>.new. An earlier .new that differs (half
+        merged, perhaps) is never overwritten: the newer one goes beside it as .new2, .new3."""
+        earlier, n = [], 1
+        while True:
+            name = rel + (".new" if n == 1 else ".new%d" % n)
+            if blocked(name):
+                held.add(rel)
+                return False
+            path = os.path.join(dest, *name.split("/"))
+            if not os.path.lexists(path):
+                break
+            if sha(read_bytes(path)) == sha(data):
+                return False  # offered already
+            earlier.append(name)
+            n += 1
+        write(name, data, src)
+        news.append(name)
+        for there in earlier:
+            print("  = %s  (kept as it is: from an earlier upgrade, perhaps half merged)" % there)
+        print("  ! %s  (%s)" % (name, "edited here since planting; the seed's version is beside it" if known
+                                else "differs from the seed's, with no record of what was planted"))
         return True
 
     with tempfile.TemporaryDirectory() as tmp:
         fresh = os.path.join(tmp, os.path.basename(dest) or "vault")
         with contextlib.redirect_stdout(io.StringIO()):
-            allow, start_cmd = plant(Seeder(False), fresh, opts, tokens, fresh)
+            plant(Seeder(False), fresh, opts, tokens, fresh)
         shipped = files_under(fresh)
         owned = {}
         for rel, src in shipped.items():
             if rel in (".claude/settings.json", ".gitignore", "bin/vault.json"):
                 continue  # merged below
             data = read_bytes(src)
-            target = os.path.join(dest, *rel.split("/"))
-            is_owned = seed_owned(rel, opts["kinds"])
-            if is_owned:
+            if seed_owned(rel, opts["kinds"]):
                 owned[rel] = sha(data)
+            if blocked(rel):
+                held.add(rel)
+                continue
+            target = os.path.join(dest, *rel.split("/"))
             if not os.path.exists(target):
                 if os.path.basename(rel) == ".gitkeep" and os.path.isdir(os.path.dirname(target)):
                     continue  # the folder is there, with or without its placeholder
@@ -768,7 +921,7 @@ def upgrade(dest, dry, commit):
                 if sha(data) != claude_seen and offer(rel, data, src, claude_seen is not None):
                     counts["new"] += 1
                 continue
-            if not is_owned:
+            if rel not in owned:
                 continue  # a root document, a template, a note: the owner's
             if recorded.get(rel) == mine:
                 write(rel, data, src)
@@ -777,17 +930,16 @@ def upgrade(dest, dry, commit):
             elif recorded.get(rel) != sha(data) and offer(rel, data, src, rel in recorded):
                 counts["new"] += 1
 
-        # bin/vault.json: new keys, and new budgets; never a value already there.
+        # bin/vault.json: new keys, and new budgets; never a value already there, and its own style kept.
         with open(shipped["bin/vault.json"], encoding="utf-8") as fh:
             want = json.load(fh)
-        path = os.path.join(dest, "bin", "vault.json")
+        text = read_text(dest, os.path.join("bin", "vault.json"))
         try:
-            with open(path, encoding="utf-8") as fh:
-                have = json.load(fh)
+            have = json.loads(text)
         except ValueError:
             have = None
             print("build: bin/vault.json is not valid JSON; leaving it alone. Its new keys: %s" % ", ".join(want))
-        if isinstance(have, dict):
+        if isinstance(have, dict) and not blocked("bin/vault.json"):
             added = []
             for key, val in want.items():
                 if key not in have:
@@ -799,18 +951,16 @@ def upgrade(dest, dry, commit):
                             have[key][name] = size
                             added.append("budgets: %s" % name)
             if added:
-                write("bin/vault.json", (json.dumps(have, indent=2) + "\n").encode("utf-8"))
+                indent = re.search(r"\n([ \t]+)\"", text)
+                out = json.dumps(have, indent=indent.group(1) if indent else None, ensure_ascii=False)
+                write("bin/vault.json", (out + ("\n" if text.endswith("\n") else "")).encode("utf-8"))
                 changed = True
                 print("  + bin/vault.json: %s" % ", ".join(added))
 
         # .gitignore: the lines it lacks, each block with its comment; never a line already there.
         with open(shipped[".gitignore"], encoding="utf-8") as fh:
             want = fh.read()
-        path = os.path.join(dest, ".gitignore")
-        have = ""
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                have = fh.read()
+        have = read_text(dest, ".gitignore")
         there = {ln.strip() for ln in have.split("\n")}
         blocks = []
         for block in want.split("\n\n"):
@@ -818,19 +968,24 @@ def upgrade(dest, dry, commit):
             missing = [ln for ln in lines if not ln.startswith("#") and ln.strip() not in there]
             if missing:
                 blocks.append([ln for ln in lines if ln.startswith("#") and ln.strip() not in there] + missing)
-                print("  + .gitignore: %s" % ", ".join(missing))
-        if blocks:
+        if blocks and not blocked(".gitignore"):
+            for block in blocks:
+                print("  + .gitignore: %s" % ", ".join(ln for ln in block if not ln.startswith("#")))
             text = have + ("\n" if have and not have.endswith("\n") else "") + ("\n" if have else "")
             write(".gitignore", (text + "\n\n".join("\n".join(b) for b in blocks) + "\n").encode("utf-8"))
             changed = True
 
         fresh_claude = sha(read_bytes(shipped["CLAUDE.md"]))
 
-    # Settings: the same hooks and allow rules planting merges, by the same function.
-    if merge_settings(seeder, repo_root, allow=allow, start_cmd=start_cmd):
-        changed = True
+    # Settings: the hooks and allow rules for where the vault is today, by the function planting uses.
+    allow, start_cmd = settings_for(opts["kinds"], prefix)
+    if not blocked(".claude/settings.json", repo_root):
+        if merge_settings(seeder, repo_root, allow=allow, start_cmd=start_cmd):
+            changed = True
 
-    gone = sorted(rel for rel in recorded if rel not in owned and os.path.exists(os.path.join(dest, *rel.split("/"))))
+    for link in sorted(links):
+        print("  = %s  (left alone: symlink)" % link)
+    gone = sorted(rel for rel in recorded if rel not in owned and os.path.lexists(os.path.join(dest, *rel.split("/"))))
     for old_skill, new_skill in sorted(RETIRED_SKILLS.items()):
         folder = ".claude/skills/%s/" % old_skill
         if os.path.isdir(os.path.join(dest, ".claude", "skills", old_skill)):
@@ -840,8 +995,16 @@ def upgrade(dest, dry, commit):
     for line in retired:
         print("  retired %s. Kept, never deleted: remove it once you are sure." % line)
 
-    new_manifest = manifest_text(commit, planted, opts, fresh_claude, owned)
-    if old is None or dict(old, seed=commit) != json.loads(new_manifest):
+    # What the manifest records: the seed's hash for each file it owns, except one left alone behind
+    # a link, which keeps its old record (or none), so a later upgrade still sees it as it is.
+    for rel in held:
+        if rel in recorded:
+            owned[rel] = recorded[rel]
+        else:
+            owned.pop(rel, None)
+    claude_md = claude_seen if "CLAUDE.md" in held else fresh_claude
+    new_manifest = manifest_text(commit, planted, opts, location, claude_md, owned)
+    if not blocked(MANIFEST) and (old is None or dict(old, seed=commit) != json.loads(new_manifest)):
         write(MANIFEST, new_manifest.encode("utf-8"))
         changed = True
         print("  ~ %s  (%s)" % (MANIFEST, "recorded" if old is None else "updated"))
@@ -849,17 +1012,17 @@ def upgrade(dest, dry, commit):
     if not changed:
         print("build: nothing to upgrade: %s already has everything this seed ships" % dest)
         return 0
-    if not dry:
+    if not dry and not link_in(dest, ".paths/index.txt") and not link_in(dest, "bin/find.py"):
         finder = os.path.join(dest, "bin", "find.py")
-        if os.path.exists(finder):
+        if os.path.isfile(finder):
             subprocess.run([sys.executable, finder, "--rebuild"], cwd=dest, capture_output=True)
     print("build: %s %d files, %s %d and %s %d .new to merge, vault at %s" % (
         "would add" if dry else "added", counts["added"], "replace" if dry else "replaced", counts["replaced"],
         "write" if dry else "wrote", counts["new"], dest))
-    if "CLAUDE.md.new" in news:
-        print("build: CLAUDE.md.new is the seed's CLAUDE.md for this vault. AI: go through what it changes with "
-              "the owner as a numbered list, merge what they approve into CLAUDE.md, then delete CLAUDE.md.new.")
-    if [n for n in news if n != "CLAUDE.md.new"]:
+    if [n for n in news if n.startswith("CLAUDE.md.new")]:
+        print("build: the CLAUDE.md.new above is the seed's CLAUDE.md for this vault. AI: go through what it "
+              "changes with the owner as a numbered list, merge what they approve into CLAUDE.md, then delete it.")
+    if [n for n in news if not n.startswith("CLAUDE.md.new")]:
         print("build: a .new beside a seed file is the seed's version of a file edited here. AI: for each, show "
               "the owner what it changes as a numbered list, merge what they approve, then delete the .new.")
         if old is None:
@@ -869,7 +1032,7 @@ def upgrade(dest, dry, commit):
     if dry:
         print("build: --dry-run, nothing written")
     else:
-        print("build: check it with: python3 %sbin/lint.py, then commit" % tokens["VAULT_PREFIX"])
+        print("build: check it with: python3 %sbin/lint.py, then commit" % prefix)
     return 0
 
 
@@ -934,12 +1097,19 @@ def main():
                 kinds=[k.strip() for k in args.kinds.split(",") if k.strip()],
                 working_memory=bool(args.working_memory), me=bool(args.me),
                 plugins=[p.strip() for p in args.plugins.split(",") if p.strip()], accent=args.accent)
-    tokens, repo_root = vault_tokens(opts, dest, args.date or datetime.date.today().isoformat())
-    prefix = tokens["VAULT_PREFIX"]
+    dest = os.path.realpath(dest)  # a symlinked parent never turns the vault's path into ../../
+    repo_root, prefix, vault_path = vault_location(dest)
+    tokens = vault_tokens(opts, args.date or datetime.date.today().isoformat(), prefix, vault_path)
+    manifest = os.path.join(dest, *MANIFEST.split("/"))
+    # A vault planted before manifests: hashing the seed's files now would hide the old ones it has.
+    unrecorded = os.path.exists(os.path.join(dest, "bin", "vault.json")) and not os.path.exists(manifest)
     seeder = Seeder(args.dry_run)
     plant(seeder, dest, opts, tokens, repo_root)
-    seeder.write(os.path.join(dest, *MANIFEST.split("/")),
-                 manifest_for(seeder, dest, opts, tokens["DATE"], args.seed_commit or seed_commit()))
+    if unrecorded:
+        print("build: no %s written: this vault was planted before manifests, so run --upgrade "
+              "(--dry-run first) to bring it up to date and record one" % MANIFEST)
+    else:
+        seeder.write(manifest, manifest_for(seeder, dest, opts, tokens, args.seed_commit or seed_commit()))
 
     verb = "would create" if args.dry_run else "created"
     for path in seeder.made:
