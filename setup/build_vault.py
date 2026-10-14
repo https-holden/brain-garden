@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import colorsys
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -356,6 +357,20 @@ def brain_tokens(kinds, working_memory):
     ), schema, types
 
 
+def index_text(dest):
+    """What bin/find.py keeps in .paths/index.txt, for the notes already in dest (none in a new vault)."""
+    if not os.path.exists(os.path.join(dest, "bin", "vault.json")):
+        return ""
+    spec = importlib.util.spec_from_file_location("vault_find", os.path.join(ASSETS, "brain", "bin", "find.py"))
+    finder = importlib.util.module_from_spec(spec)
+    before, sys.dont_write_bytecode = sys.dont_write_bytecode, True  # no __pycache__ in template/
+    try:
+        spec.loader.exec_module(finder)
+    finally:
+        sys.dont_write_bytecode = before
+    return finder.build(dest)
+
+
 def section(name, tokens):
     with open(os.path.join(ASSETS, "optional", "sections", name + ".md"), encoding="utf-8") as fh:
         return sub(fh.read(), tokens)
@@ -419,6 +434,7 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     if working_memory:
         with open(os.path.join(ASSETS, "optional", "Now.md"), encoding="utf-8") as fh:
             seeder.write(os.path.join(dest, "Now.md"), sub(fh.read(), tokens))
+    seeder.write(os.path.join(dest, ".paths", "index.txt"), index_text(dest))
     return tokens
 
 
@@ -511,7 +527,7 @@ def main():
     seeder = Seeder(args.dry_run)
 
     seed_brain(seeder, dest, tokens, kinds, args.working_memory, args.me)
-    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix]
+    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix]
     if "Clippings" in kinds:
         allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
     merge_settings(seeder, repo_root, allow=allow)

@@ -38,6 +38,8 @@ Rules it keeps, like every script in this vault:
   `ingested: <today>`. It has no `filed:` until the librarian files it, and that
   missing line is what `waiting` looks for.
 - It never sets `modified`, which means "last edited by hand".
+- After it writes, it rebuilds the index of notes (.paths/index.txt, see
+  bin/find.py), so the next lookup finds what came in.
 
 Add --dry-run to `add` to see what would be made without writing anything.
 """
@@ -65,12 +67,15 @@ from html.parser import HTMLParser
 from pathlib import Path
 from xml.etree import ElementTree
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import find  # noqa: E402
+
 VAULT = Path(__file__).resolve().parent.parent
 CONFIG = json.loads((VAULT / "bin" / "vault.json").read_text(encoding="utf-8"))
 ATTACH = VAULT / "Attachments"
 START, END = "<!-- ingest:start -->", "<!-- ingest:end -->"
 DASHES = str.maketrans({"\u2013": "-", "\u2014": "-"})
-SKIP_DIRS = {".git", ".obsidian", ".trash", ".claude", "bin", "node_modules", "__pycache__"}
+SKIP_DIRS = {".git", ".obsidian", ".trash", ".claude", ".paths", "bin", "node_modules", "__pycache__"}
 NOTION_ID = re.compile(r"\s+[0-9a-f]{32}$")
 URL = re.compile(r"^https?://\S+$")
 TODAY = dt.date.today().isoformat()
@@ -663,6 +668,7 @@ def cmd_add(args) -> None:
     else:
         if VIA:
             stamp_source(VIA)
+        find.rebuild(str(VAULT))
         print("Next: file them with `python3 bin/librarian.py`, or ask your AI to follow bin/librarian.md.")
 
 
@@ -717,6 +723,7 @@ def rename(old: str, new: str) -> Path:
 
 def cmd_rename(args) -> None:
     rename(args.old, args.new)
+    find.rebuild(str(VAULT))
 
 
 # ------------------------------------------------------------ pruning
@@ -902,6 +909,7 @@ def cmd_trash(args) -> None:
         sys.exit("Refused: you wrote something below the ingest:end marker in %r." % stem)
     trash.mkdir(exist_ok=True)
     shutil.move(str(n["path"]), str(trash / n["path"].name))
+    find.rebuild(str(VAULT))
     print("TRASHED  Clippings/%s.md  (restore it from .trash/ or Obsidian's file recovery)" % stem)
 
 

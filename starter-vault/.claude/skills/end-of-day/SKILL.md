@@ -39,8 +39,8 @@ A learning is one of these, and it names the folder it would go in (see the kind
   is Green next time. A Red item the owner did by hand is worth one question: how did you do
   it?
 
-Before proposing a new note, grep the filenames for its key noun and show near matches: a
-second note about the same thing is an edit to the first.
+Before proposing a new note, look it up with the one recipe in `CLAUDE.md` and show near
+matches: a second note about the same thing is an edit to the first.
 
 ## 3. Propose as one numbered list, then apply
 

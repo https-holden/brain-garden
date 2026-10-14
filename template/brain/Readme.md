@@ -21,6 +21,14 @@ Obsidian, "Open folder as vault", this directory. Start at [[Home]].
 
 @@DAILY_USE@@
 
+## Finding things
+
+`python3 @@VAULT_PREFIX@@bin/find.py <words>` lists the notes whose title, aliases, topics or
+status have every word, one line each. Your AI starts every lookup with it. It reads an index
+of your notes, `.paths/index.txt`, which keeps itself current and is committed, so its history
+shows what the vault knows. Using ChatGPT? `python3 @@VAULT_PREFIX@@bin/find.py --all` prints
+the whole index: save it as a file in your ChatGPT project, beside `CLAUDE.md` and `Me.md`.
+
 @@README_SECTIONS@@## Keeping it honest
 
 `python3 @@VAULT_PREFIX@@bin/lint.py` checks the vault against its own templates and rules.

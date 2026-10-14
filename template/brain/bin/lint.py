@@ -15,6 +15,10 @@ Warnings (exit 0):
   - a Now.md bullet with no date, or one older than now_max_days
   - an action log line (a bullet under `## Actions`) that does not start with
     `YYYY-MM-DD HH:MM` or is missing `Why:` or `Asked by:`
+Fixed, never an error:
+  - .paths/index.txt (the index bin/find.py reads) is rebuilt and rewritten when
+    its content is not what the notes say, with one line saying so. Content, not
+    file times, because a clone or a pull resets those.
 
 The schema is the templates: Templates/<Kind> Template.md says which properties a
 kind carries, so a template edit is a schema edit. bin/vault.json maps each kind
@@ -28,10 +32,13 @@ import re
 import sys
 from datetime import date, datetime
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import find  # noqa: E402
+
 VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = json.load(open(os.path.join(VAULT, "bin", "vault.json"), encoding="utf-8"))
 KINDS = CONFIG["kinds"]
-SKIP = {".git", ".obsidian", ".trash", ".claude", "bin", "node_modules", "__pycache__"}
+SKIP = {".git", ".obsidian", ".trash", ".claude", ".paths", "bin", "node_modules", "__pycache__"}
 LINK = re.compile(r"\[\[([^\]|#]+)")
 DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
@@ -137,6 +144,8 @@ def main():
                 elif (today - datetime.strptime(found[-1], "%Y-%m-%d").date()).days > CONFIG.get("now_max_days", 14):
                     warnings.append("Now.md: stale bullet under %s (%s): %s" % (section, found[-1], line[2:50]))
 
+    if find.rebuild(VAULT):
+        print("index  .paths/index.txt was out of date: rewrote it from the notes (commit it with them)")
     for w in warnings:
         print("warn   %s" % w)
     for e in errors:

@@ -35,8 +35,8 @@ attention only where it is needed. Ask three questions in order and stop at the 
 
 1. **Is it clear what done looks like?** The item names the outcome, or a note, `Now.md` or an
    earlier line in an action log shows it.
-2. **Has it been done here before, the same way?** A note with the steps, or an earlier action
-   log line for the same kind of thing.
+2. **Has it been done here before, the same way?** A note with the steps (look for it with
+   the one recipe in `CLAUDE.md`), or an earlier action log line for the same kind of thing.
 3. **Can you do it with what this session has, and is the worst step reversible?** No login
    you do not have, no money, nothing deleted, and nothing sent that cannot be taken back.
 

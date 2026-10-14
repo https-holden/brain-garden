@@ -169,8 +169,8 @@ ever deleted by it. With a chat AI, the prompts are in
 ## Once the vault exists
 
 Work from the vault's own `CLAUDE.md` (inside their vault folder, not this repo's). It is the
-contract: where each kind of note goes, the properties, the rules, the check to run
-(`python3 bin/lint.py`). Follow it exactly, even if you are not Claude. Never invent notes or
+contract: where each kind of note goes, the properties, the rules, how to look things up
+(`python3 bin/find.py` first), the check to run (`python3 bin/lint.py`). Follow it exactly, even if you are not Claude. Never invent notes or
 facts for them: the vault holds their material, not yours.
 
 ## What is in this repository

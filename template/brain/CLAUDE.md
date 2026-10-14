@@ -44,8 +44,12 @@ change is recorded in `Decisions.md` in the same session.
 
 Every question uses this order, stopping early when the answer is clear:
 
-1. `ls` the kind folders. Filenames are claims, imperatives and names, so the listing is the
-   index. Match on words from the ask.
+1. `python3 @@VAULT_PREFIX@@bin/find.py <words from the ask>`. It prints one line per note
+   that has every word: `Folder/title :: aliases :: categories :: status`. Titles are claims,
+   imperatives and names, so the line often answers on its own. Stale notes are left out unless
+   you add `--stale`; `--topic <Topic>` lists one topic's notes. Never list the kind folders
+   instead: the index is the listing, and each query is logged, so a miss shows where a note
+   or an alias is missing.
 2. Frontmatter grep: `categories` for the topic, then any property the ask names.
 3. Full text grep on distinctive strings.
 
@@ -54,8 +58,9 @@ the answer says how old the evidence is. Exclude `status: stale` from results; a
 cited only to warn that an answer may have changed. `verified` can be stated, `draft` must be
 hedged.
 
-Before creating a note, grep the filenames for the key noun and show near matches. A second
-note about the same thing becomes an edit to the first, never a sibling.
+Before creating a note, run the find tool on its key noun, grep the filenames for it too, and
+show near matches. A second note about the same thing becomes an edit to the first, never a
+sibling.
 
 ## Vault map
 
@@ -68,8 +73,9 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `Categories/` | One page per topic in use: `tags: [categories]`, one paragraph, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
-| `bin/` | `lint.py` (the drift check) and its `vault.json`@@BIN_EXTRA@@. Re-runnable maintenance scripts. | Secrets, logs in git. |
+| `bin/` | `lint.py` (the drift check) and its `vault.json`, `find.py` (step 1 of the recipe)@@BIN_EXTRA@@. Re-runnable maintenance scripts. | Secrets, logs in git. |
 | `.obsidian/` | Tracked config, the `vault.css` snippet, any home-made plugins. Document a new plugin in `Readme.md`. | Content. |
+| `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. | Hand edits. |
 
 ## Kinds in use
 
