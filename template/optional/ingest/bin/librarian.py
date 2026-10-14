@@ -172,6 +172,9 @@ def apply_answer(path: Path) -> None:
         if not new_fm:
             print("REFUSED  %s  (the answer has no frontmatter)" % target)
             continue
+        kept = re.search(r"^imported_from:.*$", split_frontmatter(current)[0], re.M)
+        if kept and not re.search(r"^imported_from:", new_fm, re.M):  # how a later vault import knows it
+            new_fm = new_fm[:-4] + "\n" + kept.group(0) + "\n---"
         if not re.search(r"^filed:", new_fm, re.M):
             new_fm = new_fm[:-4] + "\nfiled: %s\n---" % dt.date.today().isoformat()
         tail = current.split(END, 1)[1] if END in current else ""

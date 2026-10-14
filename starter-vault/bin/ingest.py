@@ -55,7 +55,9 @@ here is renamed, and every link to it in the imported notes is rewritten; links
 to notes left behind stay as they are. Its settings, .trash/, templates folder,
 .base and .canvas files are skipped and counted, and its CLAUDE.md or AGENTS.md
 is named, not imported. --sample N brings the first N notes; a later run skips
-whatever an earlier one brought.
+whatever an earlier one brought, which it knows by `imported_from:` (the old
+vault and the path there). Names are decided for the whole old vault on every
+run, so a sample and the full run agree.
 
 Add --dry-run to `add` to see what would be made without writing anything.
 """
@@ -67,6 +69,7 @@ import datetime as dt
 import email
 import email.policy
 import email.utils
+import filecmp
 import html
 import io
 import json
@@ -133,11 +136,12 @@ def template_keys(folder: str) -> list[tuple[str, str]]:
     return out
 
 
-def note_names() -> set[str]:
-    """Every note name in the vault, lower case. Obsidian links by name, so names are global."""
+def note_names(but: str = "") -> set[str]:
+    """Every note name in the vault, lower case (leaving out the top folder `but`, if given).
+    Obsidian links by name, so names are global."""
     names = set()
     for root, dirs, files in os.walk(VAULT):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not (d == but and Path(root) == VAULT)]
         for fn in files:
             if fn.endswith(".md"):
                 names.add(unicodedata.normalize("NFC", fn[:-3]).lower())
@@ -634,11 +638,12 @@ def add_folder(root: Path, folder: str, mine: bool, taken: set[str], dry: bool, 
 # ------------------------------------------------------------ an existing Obsidian vault
 
 
-RULE_FILES = {"claude.md", "agents.md", "gemini.md"}
+RULE_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")  # only at the old vault's top level or in its .claude/
 DATED = re.compile(r"\d{4}-\d{2}-\d{2}")
 WIKI = re.compile(r"(!?)\[\[([^\[\]|#^]+)([#^][^\[\]|]*)?(\|[^\[\]]*)?\]\]")
-MD_EMBED = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
-IMPORTED = re.compile(r"^\*Imported from (.+) on \d{4}-\d{2}-\d{2}\.\*$", re.M)
+MD_LINK = re.compile(r'(!?)\[([^\]]*)\]\((<[^>]*>|[^)\s]+)(?:\s+"[^"]*")?\)')
+CODE = re.compile(r"(```.*?```|~~~.*?~~~|`[^`\n]+`)", re.S)
+CATEGORY = re.compile(r"\[\[([^\]|#]*)[^\]]*\]\]|([^,\n\[\]\"]+)")
 
 
 def plural(n: int, word: str) -> str:
@@ -672,7 +677,7 @@ class OldVault:
                 rel, ext = here + fn, os.path.splitext(fn)[1].lower()
                 if fn.startswith("."):
                     continue
-                if fn.lower() in RULE_FILES:
+                if not here and fn in RULE_FILES:
                     self.rules.append(rel)
                 elif ext in counts:
                     counts[ext] += 1
@@ -681,6 +686,7 @@ class OldVault:
                 else:
                     self.files[rel.lower()] = Path(base) / fn
                     self.by_name.setdefault(fn.lower(), []).append(rel.lower())
+        self.rules += [".claude/" + fn for fn in RULE_FILES if (root / ".claude" / fn).is_file()]
         self.notes.sort()
         self.skipped += ["%s %s file%s" % (n, ext, "" if n == 1 else "s") for ext, n in counts.items() if n]
 
@@ -778,20 +784,48 @@ def report_skipped(old: OldVault, more: list[str]) -> None:
 
 
 def imported_before() -> dict[str, str]:
-    """{origin line: note name} for notes an earlier import brought in, so a run after a sample
-    does not bring them twice."""
+    """{imported_from value: note name} for every note an import brought in. The property names the
+    old vault and the path there, and the librarian keeps it, so a filed or renamed note still counts."""
     out = {}
     for root, dirs, files in os.walk(VAULT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for fn in files:
             if fn.endswith(".md"):
-                text = (Path(root) / fn).read_text(encoding="utf-8", errors="replace")
-                for m in IMPORTED.finditer(text):
-                    out[m.group(1)] = fn[:-3]
+                fm, _ = head_and_body((Path(root) / fn).read_text(encoding="utf-8", errors="replace"))
+                value = fm.get("imported_from", "").strip()
+                try:
+                    value = json.loads(value) if value.startswith('"') else value
+                except ValueError:
+                    pass
+                if value:
+                    out[value] = fn[:-3]
     return out
 
 
-def topic_page(topic: str, dry: bool) -> None:
+def attached_before(src: Path) -> str | None:
+    """The name of a file already in Attachments/ with the same bytes, among the names attach() tries."""
+    stem, ext = os.path.splitext(safe_name(src.name))
+    name, n = stem + ext, 2
+    while (ATTACH / name).exists():
+        if filecmp.cmp(str(src), str(ATTACH / name), shallow=False):
+            return name
+        name, n = "%s (%d)%s" % (stem, n, ext), n + 1
+    return None
+
+
+def category_values(lines: list[str]) -> list[str]:
+    """Every value of a `categories` property: a link by its target, a plain word as written."""
+    out = []
+    for m in CATEGORY.finditer("\n".join(lines).split(":", 1)[-1]):
+        value = m.group(1).split("/")[-1] if m.group(1) is not None else m.group(2).strip().lstrip("-")
+        value = value.strip().strip("'\"")
+        value = value[:-3] if value.lower().endswith(".md") else value
+        if value:
+            out.append(safe_name(value))
+    return out
+
+
+def topic_page(topic: str, dry: bool, why: str = "") -> None:
     """A new page in Categories/, made from the topic template like any other."""
     tpl = VAULT / "Templates" / "Topic Template.md"
     text = tpl.read_text(encoding="utf-8") if tpl.exists() else "---\ntags:\n  - categories\n---\n"
@@ -799,18 +833,22 @@ def topic_page(topic: str, dry: bool) -> None:
         (VAULT / "Categories").mkdir(exist_ok=True)
         (VAULT / "Categories" / (topic + ".md")).write_text(
             text.replace("{{title}}", topic).replace("{{date}}", TODAY), encoding="utf-8")
-    print("TOPIC  Categories/%s.md  (a new topic page)" % topic)
+    print("TOPIC  Categories/%s.md  (a new topic page%s)" % (topic, why))
 
 
 def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> bool:
     """Bring an Obsidian vault in. Without --map, propose a mapping and return False."""
     if not (root / ".obsidian").is_dir():
         sys.exit("%s is not an Obsidian vault (it has no .obsidian/ folder). Use `add` without --vault." % root)
-    old = OldVault(root.resolve())
+    src, here = root.resolve(), VAULT.resolve()
+    if src == here or src in here.parents:
+        sys.exit("Refused: %s is this vault, or a folder that holds it. Give the old vault's own folder." % root)
+    old = OldVault(src)
     if not maps:
         propose(old)
         return False
     mapping = read_maps(maps, old)
+    key = lambda rel: ("%s/%s" % (old.name, rel)).translate(DASHES)  # noqa: E731  its imported_from: value
     origin_of = lambda rel: ("`%s` in the vault `%s`" % (rel, old.name)).translate(DASHES)  # noqa: E731
     picked, unmapped = [], {}
     for rel in old.notes:
@@ -818,38 +856,54 @@ def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> 
         if kind:
             picked.append((rel, kind))
         else:
-            top = top_folder(rel)
-            unmapped[top] = unmapped.get(top, 0) + 1
+            unmapped[top_folder(rel)] = unmapped.get(top_folder(rel), 0) + 1
     before = imported_before()
-    todo = [(rel, kind) for rel, kind in picked if origin_of(rel) not in before]
+    done = [rel for rel, _ in picked if key(rel) in before]
+    todo = [(rel, kind) for rel, kind in picked if key(rel) not in before]
     if sample:
         todo = todo[:sample]
     coming = {rel for rel, _ in todo}
-    # Every name first, so a link can be pointed at a note imported after the one that holds it.
+    # A name for every mapped note on every run, in sorted order, whether it comes now, came before
+    # (it keeps the name it has) or comes later: a sample and the full run agree, and every link
+    # points at the name its note has, or will have, here.
     taken = note_names()
     name_of, by_path, by_name = {}, {}, {}
     for rel, kind in picked:
-        if origin_of(rel) in before:
-            name = before[origin_of(rel)]
-        elif rel in coming:
-            name = unique_note(Path(rel).stem, taken)
-            name_of[rel] = name
-        else:
-            continue
-        by_path[rel[:-3].lower()] = name
-        by_name.setdefault(Path(rel).stem.lower(), name)
         stem = Path(rel).stem
-        if name != stem and rel in name_of:
+        name = before.get(key(rel)) or unique_note(stem, taken)
+        name_of[rel] = name
+        by_path[rel[:-3].lower()] = name
+        by_name.setdefault(stem.lower(), name)
+        if name != stem and rel in coming:
             print("RENAMED  %s  ->  %s  (%s; links to it are rewritten)" % (
                 stem, name, "a note here has that name" if safe_name(stem) == stem else "a character a name cannot have here"))
 
     copied: dict[str, str] = {}
+    fresh: list[str] = []
     topics = {p.stem.lower(): p.stem for p in (VAULT / "Categories").glob("*.md")}
-    made: list[str] = []
+    others = note_names(but="Categories") | {n.lower() for n in name_of.values()}
+    made: list[tuple[str, str]] = []
+
+    def topic_for(value: str) -> str:
+        """An existing topic page, else a new one on the first free name that is no note's name."""
+        n = 1
+        while True:
+            name = value if n == 1 else "%s (%d)" % (value, n)
+            if name.lower() in topics:
+                return topics[name.lower()]
+            if name.lower() not in others:
+                topics[name.lower()] = name
+                made.append((name, "" if n == 1 else "; %s is a note's name here" % value))
+                return name
+            n += 1
 
     def attachment(found: str) -> str:
         if found not in copied:
-            copied[found] = attach(old.files[found], None, old.files[found].name, dry)
+            path = old.files[found]
+            same = attached_before(path)  # brought by an earlier run: not copied twice
+            copied[found] = same or attach(path, None, path.name, dry)
+            if not same:
+                fresh.append(copied[found])
         return copied[found]
 
     def note_named(target: str, folder: str) -> str | None:
@@ -861,6 +915,7 @@ def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> 
         return by_path.get(t) or next((v for p, v in by_path.items() if p.endswith("/" + t)), None)
 
     def relink(text: str, folder: str) -> str:
+        """Embedded files copied and their embeds renamed, links to renamed notes rewritten, code untouched."""
         def wiki(m: re.Match) -> str:
             bang, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4) or ""
             found = old.find(target, folder) if bang else None
@@ -872,11 +927,20 @@ def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> 
             return "%s[[%s%s%s]]" % (bang, name, anchor, alias)
 
         def md(m: re.Match) -> str:
-            target = urllib.parse.unquote(m.group(2).split(" ")[0])
-            found = None if re.match(r"^[a-z]+:", target) else old.find(target, folder)
-            return "![[%s]]" % attachment(found) if found else m.group(0)
+            bang, label, target = m.group(1), m.group(2), m.group(3).strip("<>")
+            if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I):
+                return m.group(0)  # a web address
+            path, _, anchor = urllib.parse.unquote(target).partition("#")
+            if bang:
+                found = old.find(path, folder)
+                return "![[%s]]" % attachment(found) if found else m.group(0)
+            name = note_named(path, folder) if path.lower().endswith(".md") else None
+            if name is None or name == path[:-3]:
+                return m.group(0)
+            return "[[%s%s%s]]" % (name, "#" + anchor if anchor else "", "|" + label if label and label != name else "")
 
-        return MD_EMBED.sub(md, WIKI.sub(wiki, text))
+        parts = CODE.split(text)
+        return "".join(p if i % 2 else MD_LINK.sub(md, WIKI.sub(wiki, p)) for i, p in enumerate(parts))
 
     added: dict[str, int] = {}
     for rel, kind in todo:
@@ -886,35 +950,35 @@ def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> 
         if text.startswith("---\n") and "\n---" in text[3:]:
             end = text.index("\n---", 3)
             lines, text = text[4:end].split("\n"), text[end + 4:].lstrip("\n")
-        kept = blocks([relink(ln, folder).translate(DASHES) for ln in lines])
+        props = blocks([ln.translate(DASHES) for ln in lines])
         fields: dict = {}
-        raw = "\n".join(kept.pop("categories", [])).split(":", 1)[-1].strip()
-        found = [t.split("/")[-1] for t in re.findall(r"\[\[([^\]|#]+)", raw)] or [  # links, else plain words
-            t.strip().lstrip("-").strip().strip("\"'") for t in re.sub(r"^\[|\]$", "", raw).replace("\n", ",").split(",")]
-        for t in [safe_name(t[:-3] if t.endswith(".md") else t) for t in found if t]:
-            if t.lower() not in topics:
-                topics[t.lower()] = t
-                made.append(t)
-            fields.setdefault("categories", []).append("[[%s]]" % topics[t.lower()])
+        for value in category_values(props.pop("categories", [])):  # as written: topics, not the notes renamed
+            link = "[[%s]]" % topic_for(value)
+            if link not in fields.setdefault("categories", []):
+                fields["categories"].append(link)
         if "created" in {k for k, _ in template_keys(kind)}:
-            given = DATED.search(" ".join(kept.pop("created", [])))
-            fields["created"] = given.group(0) if given else born(path)
-        carry = [ln for block in kept.values() for ln in block]  # frontmatter() drops an old ingested: or filed:
+            given = " ".join(props.get("created", [])).split(":", 1)[-1].strip()
+            day = DATED.search(given)
+            if day or not given.strip("\"' "):
+                props.pop("created", None)
+                fields["created"] = day.group(0) if day else born(path)
+            # else a date in some other form ("March 4, 2021") is kept as the owner wrote it
+        carry = [relink(ln, folder) for block in props.values() for ln in block]  # frontmatter() drops an old ingested: or filed:
+        carry.append("imported_from:" + yaml_value(key(rel)))
         write_note(kind, name_of[rel], relink(text, folder), fields, origin_of(rel), set(), dry, carry)
         added[kind] = added.get(kind, 0) + 1
-    for t in made:
-        topic_page(t, dry)
+    for name, why in made:
+        topic_page(name, dry, why)
 
     print("VAULT  %s from %s: %s. %s copied into Attachments/, %s made." % (
         plural(sum(added.values()), "note"), old.name,
         ", ".join("%s %d" % kv for kv in added.items()) or "nothing new",
-        plural(len(copied), "attachment"), plural(len(made), "topic page")))
-    done = sum(1 for rel, _ in picked if origin_of(rel) in before)
+        plural(len(fresh), "attachment"), plural(len(made), "topic page")))
     if done:
-        print("ALREADY  %s imported before, left as they are" % plural(done, "note"))
+        print("ALREADY  %s imported before, left as they are" % plural(len(done), "note"))
     report_skipped(old, ["%s (%s): not mapped" % ("notes at the top level" if f == "." else f + "/", plural(n, "note"))
                          for f, n in sorted(unmapped.items())])
-    left = len(picked) - len(todo) - done
+    left = len(picked) - len(todo) - len(done)
     if sample and left > 0:
         print("SAMPLE   stopped after %s; %s left. File and check these with the owner, then run the same "
               "command without --sample for the rest." % (plural(len(todo), "note"), left))
