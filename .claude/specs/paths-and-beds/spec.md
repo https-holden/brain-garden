@@ -1,6 +1,6 @@
 # Paths and beds
 
-Status: ready-for-agent
+Status: done (all eight tickets merged on paths-and-beds, 2026-10-14)
 Source: grilling session 2026-10-14, seventeen decisions approved by the maintainer. Ported from
 the work vault Brain Garden was distilled from, where the index, the budgets, the shared bed and
 the first desire-paths pass all ran for real; this spec keeps what worked there and fixes what

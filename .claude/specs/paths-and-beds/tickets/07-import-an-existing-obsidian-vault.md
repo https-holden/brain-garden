@@ -4,12 +4,14 @@
 
 **Blocked by:** None (can start immediately; if 03 has landed, new topic pages use the hub shape)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A fixture vault built in the check (two content folders, a date-titled note, a `![[x.png]]` embed whose image sits in a subfolder, a name clash with an existing note, a templates folder, a `.base`, a `.canvas`, `.obsidian/`) gets a proposed mapping and nothing written when no mapping is given
-- [ ] With a mapping: notes land in the mapped kinds, the date note in `Daily/`, categories and created dates kept, topic pages made, the image in `Attachments/` and the embed resolving, the renamed note reachable from every link that pointed at it
-- [ ] Nothing comes in from the skipped places, and the summary counts them
-- [ ] `--sample 2` imports two notes and stops; `--dry-run` writes nothing; `--via` stamps the source row
-- [ ] Lint passes on the vault after the import; the index includes the imported notes
-- [ ] The harvest skill and the bringing-things-in guide describe importing an old vault; starter-vault rebuilt if the template changed
-- [ ] `tools/check.py` green under both Pythons; no dashes; nothing personal
+- [x] A fixture vault built in the check (two content folders, a date-titled note, a `![[x.png]]` embed whose image sits in a subfolder, a name clash with an existing note, a templates folder, a `.base`, a `.canvas`, `.obsidian/`) gets a proposed mapping and nothing written when no mapping is given
+- [x] With a mapping: notes land in the mapped kinds, the date note in `Daily/`, categories and created dates kept, topic pages made, the image in `Attachments/` and the embed resolving, the renamed note reachable from every link that pointed at it
+- [x] Nothing comes in from the skipped places, and the summary counts them
+- [x] `--sample 2` imports two notes and stops; `--dry-run` writes nothing; `--via` stamps the source row
+- [x] Lint passes on the vault after the import; the index includes the imported notes
+- [x] The harvest skill and the bringing-things-in guide describe importing an old vault; starter-vault rebuilt if the template changed
+- [x] `tools/check.py` green under both Pythons; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged d8f749c, review fixes c96560a. `--vault`, `--map src=Kind` (`.` root, `dates=Daily`), `--sample`, `imported_from` property for re-runs. Unverified: Windows paths.
