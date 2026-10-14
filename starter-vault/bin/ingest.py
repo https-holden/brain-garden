@@ -4,6 +4,11 @@
     python3 bin/ingest.py add <file|folder|url> [...]     into Clippings/ (someone else wrote it)
     python3 bin/ingest.py add --mine <file|folder> [...]  into your own notes (you wrote it)
     python3 bin/ingest.py add --links links.txt           every URL in a text file, one per line
+    python3 bin/ingest.py add --vault <folder>            an existing Obsidian vault: proposes which
+                                                          of its folders go where, and writes nothing
+    python3 bin/ingest.py add --vault <folder> --map "Projects=Notes" --map "dates=Daily" [--sample 10]
+                                                          imports it as your own writing (a folder
+                                                          mapped to Clippings is other people's)
     python3 bin/ingest.py waiting                         what the librarian has not filed yet
     python3 bin/ingest.py rename "Old name" "New name"    rename a note that is still waiting
     python3 bin/ingest.py report [--days 30] [--due]      what to prune, which sources are due
@@ -40,6 +45,19 @@ Rules it keeps, like every script in this vault:
 - It never sets `modified`, which means "last edited by hand".
 - After it writes, it rebuilds the index of notes (.paths/index.txt, see
   bin/find.py), so the next lookup finds what came in.
+
+An existing Obsidian vault (`add --vault`) is one more source. Without --map it
+writes nothing and proposes which folder goes to which kind folder here, with
+counts and the command to run. With --map it brings the notes in as your own
+writing (a folder mapped to Clippings is other people's), keeping their
+properties: `categories` (missing topic pages are made from the topic template),
+`created` (else the file's birth time), aliases, tags and the rest. The files
+their notes embed are copied flat into Attachments/. A note whose name is taken
+here is renamed, and every link to it in the imported notes is rewritten; links
+to notes left behind stay as they are. Its settings, .trash/, templates folder,
+.base and .canvas files are skipped and counted, and its CLAUDE.md or AGENTS.md
+is named, not imported. --sample N brings the first N notes; a later run skips
+whatever an earlier one brought.
 
 Add --dry-run to `add` to see what would be made without writing anything.
 """
@@ -172,24 +190,47 @@ def yaml_value(value) -> str:
     return " " + json.dumps(str(value), ensure_ascii=False)
 
 
+def blocks(lines: list[str]) -> dict[str, list[str]]:
+    """Frontmatter lines grouped by top-level key, in order. A key is any unindented `name:` line."""
+    out: dict[str, list[str]] = {}
+    key = None
+    for line in lines:
+        if line[:1].strip() and not line.startswith(("-", "#")) and ":" in line:
+            key = line.split(":", 1)[0].strip()
+            out[key] = [line]
+        elif key is not None:
+            out[key].append(line)
+    return out
+
+
 def frontmatter(folder: str, fields: dict, carry: list[str]) -> str:
+    """The template's properties in order (from fields, else the old note's own value, else the
+    default), then what ingest adds, then every other property the old note had."""
+    kept = blocks(carry)
     lines = ["---"]
     keys = template_keys(folder)
     have = {k for k, _ in keys}
     for key, raw in keys:
         if key in fields and fields[key] not in ("", None, []):
             lines.append(key + ":" + yaml_value(fields[key]))
+        elif key in kept:
+            lines.extend(kept[key])
         else:
             default = raw.replace("{{date}}", TODAY).replace("{{title}}", "")
             lines.append(key + ":" + ((" " if default and not default.startswith("\n") else "") + default))
-    for key in ("url", "author", "published"):
+    for key in ("categories", "url", "author", "published"):
         if key not in have and fields.get(key):
             lines.append(key + ":" + yaml_value(fields[key]))
+            have.add(key)
     via = VIA or (urllib.parse.urlparse(fields["url"]).netloc.replace("www.", "") if fields.get("url") else "")
     if via and "via" not in have:
         lines.append("via:" + yaml_value(via))
+        have.add("via")
     lines.append("ingested: " + TODAY)
-    lines.extend(carry)
+    have.update(("ingested", "filed"))
+    for key, block in kept.items():
+        if key not in have:
+            lines.extend(block)
     lines.append("---")
     return "\n".join(lines)
 
@@ -535,6 +576,12 @@ def add_url(url: str, folder: str, taken: set[str], dry: bool) -> None:
     write_note(folder, title or urllib.parse.urlparse(url).netloc, body, fields, url, taken, dry)
 
 
+def born(path: Path) -> str:
+    """The day a file was made: its birth time where the system keeps one, else its last change."""
+    st = path.stat()
+    return dt.date.fromtimestamp(getattr(st, "st_birthtime", st.st_mtime)).isoformat()
+
+
 def add_file(path: Path, folder: str, mine: bool, taken: set[str], dry: bool, used: set[Path]) -> None:
     ext = path.suffix.lower()
     title = NOTION_ID.sub("", path.stem)
@@ -542,8 +589,7 @@ def add_file(path: Path, folder: str, mine: bool, taken: set[str], dry: bool, us
     fields: dict = {}
     carry: list[str] = []
     if mine:
-        st = path.stat()
-        fields["created"] = dt.date.fromtimestamp(getattr(st, "st_birthtime", st.st_mtime)).isoformat()
+        fields["created"] = born(path)
     if ext in (".md", ".markdown", ".txt"):
         body, carry = read_markdown(path, dry, used)
         first = re.match(r"#\s+(.+)", body)
@@ -588,6 +634,296 @@ def add_folder(root: Path, folder: str, mine: bool, taken: set[str], dry: bool, 
     for p in rest:
         if p.resolve() not in used:
             add_file(p, folder, mine, taken, dry, used)
+
+
+# ------------------------------------------------------------ an existing Obsidian vault
+
+
+RULE_FILES = {"claude.md", "agents.md", "gemini.md"}
+DATED = re.compile(r"\d{4}-\d{2}-\d{2}")
+WIKI = re.compile(r"(!?)\[\[([^\[\]|#^]+)([#^][^\[\]|]*)?(\|[^\[\]]*)?\]\]")
+MD_EMBED = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+IMPORTED = re.compile(r"^\*Imported from (.+) on \d{4}-\d{2}-\d{2}\.\*$", re.M)
+
+
+def plural(n: int, word: str) -> str:
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
+class OldVault:
+    """What is in an Obsidian vault: its notes, its other files, and what an import leaves out."""
+
+    def __init__(self, root: Path):
+        self.root, self.name = root, root.name
+        self.notes: list[str] = []  # vault-relative paths of the notes, sorted
+        self.files: dict[str, Path] = {}  # lower-case relative path of every other file
+        self.by_name: dict[str, list[str]] = {}  # lower-case file name -> those paths
+        self.rules: list[str] = []  # CLAUDE.md, AGENTS.md: the old vault's rules for an AI
+        self.skipped: list[str] = []  # one summary line per place left out
+        self.templates = self.templates_folder()
+        counts = {".base": 0, ".canvas": 0}
+        for base, dirs, names in os.walk(root):
+            here = Path(base).relative_to(root).as_posix()
+            here = "" if here == "." else here + "/"
+            for d in sorted(dirs):
+                rel = here + d
+                if d.startswith(".") or rel == self.templates:
+                    inside = [f for _, _, fs in os.walk(Path(base) / d) for f in fs]
+                    what = plural(len(inside), "file") if d.startswith(".") else (
+                        plural(sum(f.endswith(".md") for f in inside), "note") + ", the templates folder")
+                    self.skipped.append("%s/ (%s)" % (rel, what))
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and here + d != self.templates)
+            for fn in sorted(names):
+                rel, ext = here + fn, os.path.splitext(fn)[1].lower()
+                if fn.startswith("."):
+                    continue
+                if fn.lower() in RULE_FILES:
+                    self.rules.append(rel)
+                elif ext in counts:
+                    counts[ext] += 1
+                elif ext == ".md":
+                    self.notes.append(rel)
+                else:
+                    self.files[rel.lower()] = Path(base) / fn
+                    self.by_name.setdefault(fn.lower(), []).append(rel.lower())
+        self.notes.sort()
+        self.skipped += ["%s %s file%s" % (n, ext, "" if n == 1 else "s") for ext, n in counts.items() if n]
+
+    def templates_folder(self) -> str:
+        """The folder Obsidian's Templates plugin reads, from the vault's settings, else Templates/."""
+        try:
+            folder = json.loads((self.root / ".obsidian" / "templates.json").read_text(encoding="utf-8")).get("folder")
+        except (OSError, ValueError, AttributeError):
+            folder = ""
+        folder = (folder or "").strip().strip("/")
+        return folder or ("Templates" if (self.root / "Templates").is_dir() else "")
+
+    def find(self, target: str, folder: str) -> str | None:
+        """The file an embed points at: a path from the note's folder or the vault root, else by name."""
+        t = target.strip().lstrip("/").lower()
+        for cand in (os.path.normpath(os.path.join(folder.lower(), t)), os.path.normpath(t)):
+            if cand.replace(os.sep, "/") in self.files:
+                return cand.replace(os.sep, "/")
+        hits = self.by_name.get(t.split("/")[-1])
+        return hits[0] if hits else None
+
+
+def is_dated(rel: str) -> bool:
+    return DATED.fullmatch(Path(rel).stem) is not None
+
+
+def top_folder(rel: str) -> str:
+    return rel.split("/")[0] if "/" in rel else "."
+
+
+def kind_for(rel: str, mapping: dict[str, str]) -> str | None:
+    """The kind folder a note goes to: `dates` first, then its folder or the nearest parent mapped."""
+    if "dates" in mapping and is_dated(rel):
+        return mapping["dates"]
+    folder = os.path.dirname(rel).lower()
+    if not folder:
+        return mapping.get(".")
+    while folder:
+        if folder in mapping:
+            return mapping[folder]
+        folder = os.path.dirname(folder)
+    return None
+
+
+def read_maps(maps: list[str], old: OldVault) -> dict[str, str]:
+    """--map "Folder=Kind" flags as {lower-case folder: kind}, refusing names that do not exist."""
+    kinds = {k.lower(): k for k in CONFIG["kinds"]}
+    out = {}
+    for m in maps:
+        folder, _, kind = m.rpartition("=")
+        folder, kind = folder.strip().strip("/") or ".", kind.strip().strip("/")
+        if kind.lower() not in kinds:
+            sys.exit("--map %r: %r is not a kind folder here. Kinds: %s." % (m, kind, ", ".join(CONFIG["kinds"])))
+        if folder not in (".", "dates") and not (old.root / folder).is_dir():
+            sys.exit("--map %r: the vault has no folder %r." % (m, folder))
+        out[folder.lower()] = kinds[kind.lower()]
+    return out
+
+
+def propose(old: OldVault) -> None:
+    """Print a mapping to agree with the owner, and the command that runs it. Writes nothing."""
+    kinds = list(CONFIG["kinds"])
+    dated = [n for n in old.notes if is_dated(n)] if "Daily" in kinds else []
+    counts: dict[str, int] = {}
+    for n in old.notes:
+        if n not in dated:
+            counts[top_folder(n)] = counts.get(top_folder(n), 0) + 1
+    rows = []
+    for top in sorted(counts, key=lambda t: (t != ".", t.lower())):
+        kind = next((k for k in kinds if k.lower() in (top.lower(), top.lower() + "s", top.lower().rstrip("s"))), None)
+        if kind is None and top.lower() == "categories":
+            rows.append((top, counts[top], None, "skip: topic pages are made from `categories`"))
+        else:
+            rows.append((top, counts[top], kind or kind_folder(True), ""))
+    if dated:
+        rows.append(("dates", len(dated), "Daily", "notes titled YYYY-MM-DD, wherever they are"))
+    print("VAULT  %s is an Obsidian vault with %s. Nothing was written. Proposed mapping:\n" % (
+        old.name, plural(len(old.notes), "note")))
+    for i, (top, n, kind, why) in enumerate(rows, 1):
+        print("  %d. %s  (%s)  ->  %s" % (i, "(root)" if top == "." else top, plural(n, "note"),
+                                          kind + ("  (%s)" % why if why else "") if kind else why))
+    report_skipped(old, [])
+    flags = "".join(' --map "%s=%s"' % (top, kind) for top, _, kind, _ in rows if kind)
+    print("\nShow the owner this list and change it by number. Then sample first (add --sample 10), "
+          "and run:\n  python3 bin/ingest.py add --vault \"%s\"%s --via \"%s\"" % (old.root, flags, VIA or old.name))
+
+
+def report_skipped(old: OldVault, more: list[str]) -> None:
+    for line in old.skipped + more:
+        print("SKIPPED  %s" % line)
+    if old.rules:
+        print("RULES    %s: the old vault's rules for an AI, not imported. Read them and propose, as one "
+              "numbered list, the rules worth keeping here: decisions for Decisions.md, facts about the "
+              "owner for Me.md." % ", ".join(old.rules))
+
+
+def imported_before() -> dict[str, str]:
+    """{origin line: note name} for notes an earlier import brought in, so a run after a sample
+    does not bring them twice."""
+    out = {}
+    for root, dirs, files in os.walk(VAULT):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fn in files:
+            if fn.endswith(".md"):
+                text = (Path(root) / fn).read_text(encoding="utf-8", errors="replace")
+                for m in IMPORTED.finditer(text):
+                    out[m.group(1)] = fn[:-3]
+    return out
+
+
+def topic_page(topic: str, dry: bool) -> None:
+    """A new page in Categories/, made from the topic template like any other."""
+    tpl = VAULT / "Templates" / "Topic Template.md"
+    text = tpl.read_text(encoding="utf-8") if tpl.exists() else "---\ntags:\n  - categories\n---\n"
+    if not dry:
+        (VAULT / "Categories").mkdir(exist_ok=True)
+        (VAULT / "Categories" / (topic + ".md")).write_text(
+            text.replace("{{title}}", topic).replace("{{date}}", TODAY), encoding="utf-8")
+    print("TOPIC  Categories/%s.md  (a new topic page)" % topic)
+
+
+def import_vault(root: Path, maps: list[str], sample: int | None, dry: bool) -> bool:
+    """Bring an Obsidian vault in. Without --map, propose a mapping and return False."""
+    if not (root / ".obsidian").is_dir():
+        sys.exit("%s is not an Obsidian vault (it has no .obsidian/ folder). Use `add` without --vault." % root)
+    old = OldVault(root.resolve())
+    if not maps:
+        propose(old)
+        return False
+    mapping = read_maps(maps, old)
+    origin_of = lambda rel: ("`%s` in the vault `%s`" % (rel, old.name)).translate(DASHES)  # noqa: E731
+    picked, unmapped = [], {}
+    for rel in old.notes:
+        kind = kind_for(rel, mapping)
+        if kind:
+            picked.append((rel, kind))
+        else:
+            top = top_folder(rel)
+            unmapped[top] = unmapped.get(top, 0) + 1
+    before = imported_before()
+    todo = [(rel, kind) for rel, kind in picked if origin_of(rel) not in before]
+    if sample:
+        todo = todo[:sample]
+    coming = {rel for rel, _ in todo}
+    # Every name first, so a link can be pointed at a note imported after the one that holds it.
+    taken = note_names()
+    name_of, by_path, by_name = {}, {}, {}
+    for rel, kind in picked:
+        if origin_of(rel) in before:
+            name = before[origin_of(rel)]
+        elif rel in coming:
+            name = unique_note(Path(rel).stem, taken)
+            name_of[rel] = name
+        else:
+            continue
+        by_path[rel[:-3].lower()] = name
+        by_name.setdefault(Path(rel).stem.lower(), name)
+        stem = Path(rel).stem
+        if name != stem and rel in name_of:
+            print("RENAMED  %s  ->  %s  (%s; links to it are rewritten)" % (
+                stem, name, "a note here has that name" if safe_name(stem) == stem else "a character a name cannot have here"))
+
+    copied: dict[str, str] = {}
+    topics = {p.stem.lower(): p.stem for p in (VAULT / "Categories").glob("*.md")}
+    made: list[str] = []
+
+    def attachment(found: str) -> str:
+        if found not in copied:
+            copied[found] = attach(old.files[found], None, old.files[found].name, dry)
+        return copied[found]
+
+    def note_named(target: str, folder: str) -> str | None:
+        t = target.strip().lower()
+        t = t[:-3] if t.endswith(".md") else t
+        if "/" not in t:
+            return by_name.get(t)
+        t = os.path.normpath(os.path.join(folder.lower(), t)).replace(os.sep, "/") if t.startswith(".") else t
+        return by_path.get(t) or next((v for p, v in by_path.items() if p.endswith("/" + t)), None)
+
+    def relink(text: str, folder: str) -> str:
+        def wiki(m: re.Match) -> str:
+            bang, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4) or ""
+            found = old.find(target, folder) if bang else None
+            if found:
+                return "![[%s%s%s]]" % (attachment(found), anchor, alias)
+            name = note_named(target, folder)
+            if name is None or name == target.strip():
+                return m.group(0)  # a note that did not come along stays a breadcrumb
+            return "%s[[%s%s%s]]" % (bang, name, anchor, alias)
+
+        def md(m: re.Match) -> str:
+            target = urllib.parse.unquote(m.group(2).split(" ")[0])
+            found = None if re.match(r"^[a-z]+:", target) else old.find(target, folder)
+            return "![[%s]]" % attachment(found) if found else m.group(0)
+
+        return MD_EMBED.sub(md, WIKI.sub(wiki, text))
+
+    added: dict[str, int] = {}
+    for rel, kind in todo:
+        path, folder = old.root / rel, os.path.dirname(rel)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        lines: list[str] = []
+        if text.startswith("---\n") and "\n---" in text[3:]:
+            end = text.index("\n---", 3)
+            lines, text = text[4:end].split("\n"), text[end + 4:].lstrip("\n")
+        kept = blocks([relink(ln, folder).translate(DASHES) for ln in lines])
+        fields: dict = {}
+        raw = "\n".join(kept.pop("categories", [])).split(":", 1)[-1].strip()
+        found = [t.split("/")[-1] for t in re.findall(r"\[\[([^\]|#]+)", raw)] or [  # links, else plain words
+            t.strip().lstrip("-").strip().strip("\"'") for t in re.sub(r"^\[|\]$", "", raw).replace("\n", ",").split(",")]
+        for t in [safe_name(t[:-3] if t.endswith(".md") else t) for t in found if t]:
+            if t.lower() not in topics:
+                topics[t.lower()] = t
+                made.append(t)
+            fields.setdefault("categories", []).append("[[%s]]" % topics[t.lower()])
+        if "created" in {k for k, _ in template_keys(kind)}:
+            given = DATED.search(" ".join(kept.pop("created", [])))
+            fields["created"] = given.group(0) if given else born(path)
+        carry = [ln for block in kept.values() for ln in block]  # frontmatter() drops an old ingested: or filed:
+        write_note(kind, name_of[rel], relink(text, folder), fields, origin_of(rel), set(), dry, carry)
+        added[kind] = added.get(kind, 0) + 1
+    for t in made:
+        topic_page(t, dry)
+
+    print("VAULT  %s from %s: %s. %s copied into Attachments/, %s made." % (
+        plural(sum(added.values()), "note"), old.name,
+        ", ".join("%s %d" % kv for kv in added.items()) or "nothing new",
+        plural(len(copied), "attachment"), plural(len(made), "topic page")))
+    done = sum(1 for rel, _ in picked if origin_of(rel) in before)
+    if done:
+        print("ALREADY  %s imported before, left as they are" % plural(done, "note"))
+    report_skipped(old, ["%s (%s): not mapped" % ("notes at the top level" if f == "." else f + "/", plural(n, "note"))
+                         for f, n in sorted(unmapped.items())])
+    left = len(picked) - len(todo) - done
+    if sample and left > 0:
+        print("SAMPLE   stopped after %s; %s left. File and check these with the owner, then run the same "
+              "command without --sample for the rest." % (plural(len(todo), "note"), left))
+    return True
 
 
 def source_names() -> list[str]:
@@ -638,20 +974,23 @@ def stamp_source(via: str) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def cmd_add(args) -> None:
-    global VIA
-    VIA = (args.via or "").translate(DASHES).strip()
-    VIA = next((s for s in source_names() if s.lower() == VIA.lower()), VIA)  # Sources.md's spelling
-    folder = kind_folder(args.mine)
-    taken = note_names()
-    used: set[Path] = set()
+def add_items(args) -> None:
+    """Files, folders and URLs, each into Clippings/ (or, with --mine, the owner's notes)."""
     items = list(args.items)
     if args.links:
         for line in Path(args.links).read_text(encoding="utf-8").splitlines():
             if URL.match(line.strip()):
                 items.append(line.strip())
     if not items:
-        sys.exit("Nothing to add. Give a file, a folder, a URL, or --links FILE.")
+        sys.exit("Nothing to add. Give a file, a folder, a URL, --links FILE, or --vault FOLDER.")
+    for item in items:
+        p = Path(item).expanduser()
+        if not URL.match(item) and (p / ".obsidian").is_dir():
+            sys.exit("%s is an Obsidian vault: bring it in with `add --vault \"%s\"`, which proposes "
+                     "a mapping first. Nothing was written." % (item, item))
+    folder = kind_folder(args.mine)
+    taken = note_names()
+    used: set[Path] = set()
     for item in items:
         if URL.match(item):
             add_url(item, folder, taken, args.dry_run)
@@ -663,6 +1002,23 @@ def cmd_add(args) -> None:
             add_file(p, folder, args.mine, taken, args.dry_run, used)
         else:
             print("SKIPPED  %s  (no such file, folder or URL)" % item)
+
+
+def cmd_add(args) -> None:
+    global VIA
+    VIA = (args.via or "").translate(DASHES).strip()
+    VIA = next((s for s in source_names() if s.lower() == VIA.lower()), VIA)  # Sources.md's spelling
+    if args.vault:
+        if args.items or args.links or args.mine:
+            sys.exit("--vault goes on its own: no files, --links or --mine with it.")
+        if args.sample is not None and args.sample < 1:
+            sys.exit("--sample takes a number of notes, 1 or more.")
+        if not import_vault(Path(args.vault).expanduser(), args.map or [], args.sample, args.dry_run):
+            return  # no mapping yet: the proposal is printed and nothing was written
+    else:
+        if args.map or args.sample is not None:
+            sys.exit("--map and --sample go with --vault <an Obsidian vault>.")
+        add_items(args)
     if args.dry_run:
         print("(dry run: nothing was written)")
     else:
@@ -921,6 +1277,11 @@ def main() -> None:
     a.add_argument("--mine", action="store_true", help="you wrote these: file them with your own notes")
     a.add_argument("--links", help="a text file with one URL per line")
     a.add_argument("--via", help="where these came from, as named in Sources.md (\"Voice memos\")")
+    a.add_argument("--vault", help="an existing Obsidian vault: proposes a mapping, or imports with --map")
+    a.add_argument("--map", action="append", metavar="FOLDER=KIND",
+                   help="with --vault: send a folder of it (. for its top level, dates for notes titled "
+                        "YYYY-MM-DD) to a kind folder here; repeat for each folder")
+    a.add_argument("--sample", type=int, metavar="N", help="with --vault: import the first N notes and stop")
     a.add_argument("--dry-run", action="store_true")
     a.set_defaults(func=cmd_add)
     w = sub.add_parser("waiting", help="list notes not yet filed")

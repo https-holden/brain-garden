@@ -16,6 +16,7 @@ collected, and nothing an import or an AI does ever touches your own words.
 | A PDF, Word file, email, spreadsheet, photo | `python3 bin/ingest.py add <the file>` (or a whole folder) |
 | Your own old writing (journals, essays, documents) | `python3 bin/ingest.py add --mine <file or folder>` |
 | Notes in another app (Apple Notes, Notion, Evernote, Google Keep, OneNote, Bear) | The **Importer** plugin, then `--mine` (below) |
+| An Obsidian vault you already have | `python3 bin/ingest.py add --vault <its folder>` (below) |
 | A voice memo | Transcribe it (Voice Memos on a recent Mac shows a transcript; copy it into a `.txt`), then `ingest.py add` |
 | A photo of handwriting or a whiteboard | `ingest.py add photo.jpg`. Claude can read the image when it files it. |
 | A thought | Just write it: a new note in `Notes/`, or under `## Notes` in today's daily note |
@@ -47,6 +48,28 @@ is attached and Obsidian shows it inline.
    folder to a scratch folder such as `Imported`.
 3. Then give those notes this vault's properties: `python3 bin/ingest.py add --mine Imported`
    (or ask your AI to). Check the result, then delete the scratch folder.
+
+### Bringing in an Obsidian vault you already have
+
+Your old vault is one more source. Easiest is to ask your AI to "bring in my old vault" (the
+`harvest` skill knows the steps). By hand:
+
+1. `python3 bin/ingest.py add --vault ~/Documents/Old-vault` copies nothing yet. It lists the
+   old vault's folders, numbered, with how many notes each holds and where each would go here
+   (`Projects` to `Notes/`, say), and prints the command that does it. Change the list as you
+   like: a folder you leave out is not brought in, and `--map "dates=Daily"` sends notes named
+   like `2024-05-01` to `Daily/`.
+2. Run that command with `--sample 10` first. It brings in the first ten notes and stops. Look
+   at them in Obsidian. If they are right, run it again without `--sample`; the ten are not
+   brought in twice. Add `--dry-run` to see the list without copying anything.
+3. Read what it prints at the end. It says what it left out on purpose (Obsidian's settings,
+   the trash, your templates folder, Bases and Canvases), and which notes it renamed because
+   this vault already had one with that name. Every link to a renamed note is fixed.
+
+Your notes come in as your own writing, with their topics (`categories`), dates, aliases, tags
+and other properties, and the images and files they embed land in `Attachments/`. Your old
+vault is not changed. If it had a `CLAUDE.md` or `AGENTS.md` (rules for an AI), those are not
+copied as notes: your AI reads them and suggests which rules to keep, as a numbered list.
 
 ## Step 2: get it filed
 
