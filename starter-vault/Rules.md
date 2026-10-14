@@ -124,17 +124,18 @@ fact: move detail out to a note or a skill's `references/` and leave a pointer. 
 
 A bed is a sibling git repository holding the part of this brain that others may see, itself a
 working vault. The brain is the master and sends vines to it. Each bed is an entry under `beds`
-in `bin/vault.json`: `{"name": "recipes", "path": "../sam-recipes", "remote": "<git URL, optional>", "topics": ["Recipes"], "strip": ["source"]}`.
+in `bin/vault.json`, its `path` outside this folder: `{"name": "recipes", "path": "../sam-recipes", "remote": "<git URL, optional>", "topics": ["Recipes"], "strip": ["source"]}`.
 
 - What goes: notes whose `beds` property names the bed or whose `categories` hold one of its
   `topics`, those topics' pages, and the files they embed. Never, whatever the tags: `Daily/`,
-  `People/`, `.paths/` or a root file (`Me.md`, `Now.md`, `Sources.md` and the rest).
+  `People/`, `.paths/`, a root file (`Me.md`, `Now.md`, `Sources.md` and the rest), a symlink,
+  or a `%% comment %%`.
 - `python3 bin/beds.py status`, `push` (`--dry-run` first), `pull`, and `clone`
   for beds with a remote. Push strips the `strip` properties and refuses while lint has errors,
-  while a sent note holds a word from `bin/never-share.txt` (one per line, git-ignored), or
+  while a sent file holds a word from `bin/never-share.txt` (one per line, git-ignored), or
   while the bed has changes not yet pulled (`--force` overrides only that).
 - Pull brings the bed's edits back. Conflicts, deletions, renames and new notes are reported,
-  never applied: the owner settles each. Commit `.paths/beds/`, the sync state, with the notes.
+  never applied: the owner settles each. Both commit the sync state, `.paths/beds/<name>.json`.
 
 ## Conventions
 
