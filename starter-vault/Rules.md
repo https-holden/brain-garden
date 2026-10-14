@@ -21,7 +21,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `Categories/` | One page per topic in use: `tags: [categories]`, a `## Start here` of plain links, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
-| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |
+| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets, beds), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `beds.py` (sends notes to beds), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |
 | `.obsidian/` | Tracked config, the `vault.css` snippet, any home-made plugins. Document a new plugin in `Readme.md`. | Content. |
 | `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. | Hand edits. |
 
@@ -119,6 +119,23 @@ Every file a session loads without asking (`CLAUDE.md`, `Me.md`, `Now.md`, each 
 The lint warns when one is over. Compact it then to about 75% of its budget, keeping every
 fact: move detail out to a note or a skill's `references/` and leave a pointer. A path such as
 `.claude/skills/pdf/SKILL.md` in that table gives one skill its own budget.
+
+## Beds
+
+A bed is a sibling git repository holding the part of this brain that others may see, itself a
+working vault. The brain is the master and sends vines to it. Each bed is an entry under `beds`
+in `bin/vault.json`, its `path` outside this folder: `{"name": "recipes", "path": "../sam-recipes", "remote": "<git URL, optional>", "topics": ["Recipes"], "strip": ["source"]}`.
+
+- What goes: notes whose `beds` property names the bed or whose `categories` hold one of its
+  `topics`, those topics' pages, and the files they embed. Never, whatever the tags: `Daily/`,
+  `People/`, `.paths/`, a root file (`Me.md`, `Now.md`, `Sources.md` and the rest), a symlink,
+  or a `%% comment %%`.
+- `python3 bin/beds.py status`, `push` (`--dry-run` first), `pull`, and `clone`
+  for beds with a remote. Push strips the `strip` properties and refuses while lint has errors,
+  while a sent file holds a word from `bin/never-share.txt` (one per line, git-ignored), or
+  while the bed has changes not yet pulled (`--force` overrides only that).
+- Pull brings the bed's edits back. Conflicts, deletions, renames and new notes are reported,
+  never applied: the owner settles each. Both commit the sync state, `.paths/beds/<name>.json`.
 
 ## Conventions
 

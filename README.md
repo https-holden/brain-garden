@@ -32,7 +32,7 @@ it can open your files) or any chat AI.
 | The daily habit | [guides/daily-loop.md](guides/daily-loop.md) |
 | ChatGPT prompts | [guides/prompts-for-any-ai.md](guides/prompts-for-any-ai.md) |
 | A backup | [guides/backup-with-github.md](guides/backup-with-github.md) |
-| To share one with a team | [guides/sharing-a-vault.md](guides/sharing-a-vault.md) |
+| To share part of it with family or a team | [guides/sharing-a-vault.md](guides/sharing-a-vault.md) |
 
 ## How it works
 
@@ -44,8 +44,10 @@ it can open your files) or any chat AI.
 | **Learn** | It improves its own process as you use it, every evening in the first month, then only when something rubs. |
 
 It remembers on three timescales: **short-term** (today's note), **mid-term** (`Now.md`, what
-is in flight) and **long-term** (everything you know). It is all private on your computer,
-with shared beds if you ever want them. Next on the [roadmap](ROADMAP.md): **desire paths**,
+is in flight) and **long-term** (everything you know). It is all private on your computer.
+To share part of it, the brain sends vines to its **beds**: separate vaults, each in its own
+git repository, holding only the topics you chose, whose edits come back to your brain. Next
+on the [roadmap](ROADMAP.md): **desire paths**,
 where the routes you use most get stronger and the ones you never use are compacted or pruned,
 the opposite of atrophy. The full story: [guides/how-it-works.md](guides/how-it-works.md).
 
@@ -55,7 +57,7 @@ the opposite of atrophy. The full story: [guides/how-it-works.md](guides/how-it-
 |---|---|---|
 | Kinds of note | Notes, References, People, Clippings, Daily | Knowledge, Playbooks, People, Meetings, Clippings, Daily |
 | Always | `Home.md`, `Readme.md`, `CLAUDE.md` (what any AI reads first), `Rules.md` (the detail it reads before writing), `Decisions.md`, `Me.md`, `Now.md`, `Sources.md`, topic pages, one template and one table (Base) per kind | same |
-| Tools in `bin/` | `lint.py` (the vault checks itself), `find.py` (finds notes through a one-line-per-note index), `paths.py` (footsteps: a local report of where your AI walks), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
+| Tools in `bin/` | `lint.py` (the vault checks itself), `find.py` (finds notes through a one-line-per-note index), `paths.py` (footsteps: a local report of where your AI walks), `beds.py` (shares chosen topics with a bed, a separate vault others can see, and brings their edits back), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
 | Claude skills | `start-of-day`, `run-brief`, `end-of-day`, `file-clippings`, `harvest`, `prune`, `kepano-method` | same |
 
 The structure follows Steph Ango's method ([How I use Obsidian](https://stephango.com/vault)):
