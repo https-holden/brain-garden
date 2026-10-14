@@ -85,6 +85,27 @@ yourself: `setup/mac.sh` and `setup/windows.ps1` do.
 | `resting-view` | Notes open rendered, with no cursor, until you click into the text. |
 | `sticky-bullets` | A bullet's parents stay pinned at the top while you write deep in a long list. |
 
+## Updating a vault
+
+Brain Garden keeps improving, and a vault planted earlier takes every improvement with one
+command. Commit the vault first (git is the undo), get the latest seed
+(`python3 setup/build_vault.py --self-update`), then look at the plan before running it:
+
+```bash
+python3 setup/build_vault.py --upgrade --dest ~/Documents/Obsidian/sam-brain --dry-run
+python3 setup/build_vault.py --upgrade --dest ~/Documents/Obsidian/sam-brain
+```
+
+It adds what the vault lacks (new scripts, skills, `Rules.md`, new keys in `bin/vault.json`,
+new `.gitignore` lines, the hooks and permissions in `.claude/settings.json`) and replaces the
+seed's own files you never edited, which it knows from `bin/seed-manifest.json`, written at
+planting. It never touches a note, a template or the content of a root document. A seed file
+you did edit stays as it is, with the seed's new version beside it as `<file>.new`; a changed
+`CLAUDE.md` comes as `CLAUDE.md.new`. Ask your AI to merge each `.new` with you as a numbered
+list, then delete it. A skill the seed has retired is listed, never deleted. A vault planted
+before the manifest existed works too: the builder reads its options from the vault and says
+what it found. Run it again and it says there is nothing to upgrade.
+
 ## What is in this repo
 
 ```

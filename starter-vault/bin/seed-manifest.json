@@ -1,0 +1,49 @@
+{
+  "about": "Written by Brain Garden's setup/build_vault.py. --upgrade reads it to tell the seed's files you never edited from the ones you did. Not for editing by hand.",
+  "seed": "starter",
+  "planted": "2026-10-10",
+  "options": {
+    "name": "My Second Brain",
+    "owner": "the owner",
+    "project": "its owner",
+    "preset": "personal",
+    "kinds": [
+      "Notes",
+      "References",
+      "People",
+      "Clippings",
+      "Daily"
+    ],
+    "working_memory": true,
+    "me": true,
+    "plugins": [],
+    "accent": null
+  },
+  "claude_md": "98906f256b355a702406d0913440b7fa9d66017f74791e3e195b75cf976cbf92",
+  "files": {
+    ".claude/skills/end-of-day/SKILL.md": "4c0a46b78aec9ffbfec437690a67af85f129f1cec473236921e5c6b5147f1dbb",
+    ".claude/skills/file-clippings/SKILL.md": "15900ceea02daf030d7153f60e260708e1e13d0ec283d7709b25af62aab4fdb2",
+    ".claude/skills/harvest/SKILL.md": "09fb1da453f5e4b6cb068d156125e5a8cb78235282394ce7fc60eae12e547551",
+    ".claude/skills/kepano-method/SKILL.md": "92ee3cb765ec8086522c76a19ee410017672f10f84f9301337ff9f9c1fa6f172",
+    ".claude/skills/kepano-method/references/divergences.md": "558282fba2b7ff0fcbd244d942e9af79de66c82f729a75e45d34f8bf4d289960",
+    ".claude/skills/kepano-method/references/method.md": "ecca488ab506091470503525ead327e0f2c7f773eb4deb820d936b015a7332d7",
+    ".claude/skills/run-brief/SKILL.md": "99402c38f49b002cc4453461a9fb579066a5b086c9d3fc02d139aef603887a67",
+    ".claude/skills/start-of-day/SKILL.md": "873a7d1cf5c931632ee0d84078f5b6acbf50cb1d86fb4980fc74f1ffecb488c4",
+    ".claude/skills/tend/SKILL.md": "832eec442f34396b9c76df977a97c81ce8706d80576f2c814af894eb8ededbe4",
+    ".claude/skills/tend/references/ingest-report.md": "fbd8ee6c174b88c608e87a3372c89a41fa101f04b3104f7806f071b7e616d0a9",
+    ".obsidian/snippets/vault.css": "39b46a9f2473745923ed83622a6651a78d62956177dc4fa621ba842ccdd6e1f1",
+    "Templates/Bases/Attachments.base": "703e9b29b704cc49385e4bdbf3ebb8dacdf9631598c9b82e2b4b642e87ef84bf",
+    "Templates/Bases/Backlinks.base": "0f54c99e6d1be1a0d7eb125f21a4af8adcae21a259cd3ec75a4cc04428c7d58e",
+    "Templates/Bases/Everything.base": "9d5aad9f0ff61c4a124de0cc583fd876377d98923ff9b8248dba6339c40c6cdd",
+    "Templates/Bases/Related.base": "95cc109147af1cf364350e274c7a42d14ffcc2ca0d963fd925f85b189e955fa1",
+    "Templates/Bases/Templates.base": "8293a483214dec131e46f2fcf53290ecad2052f82ec2bca995b67fd4b43de8ed",
+    "Templates/Bases/Topics.base": "532cc6769bcfc7c8d8ef2b263a8c8f17e6159bb5c3ba9c3e51c01a61df97c856",
+    "bin/beds.py": "11c0389e12ec2066cd62effa97718a076f03a6cc6aeace5038a4972ce14f3ad7",
+    "bin/find.py": "2abd2a0691acdca7f4bd05e6b74e49a60e5cde840580f6df8cce99301d44e9e0",
+    "bin/ingest.py": "2ce2552674ee6c7bfe6e9ff1b01c92f2380c12265ba7d824d2297c759258550b",
+    "bin/librarian.md": "5ddd258d9c31067a75aa48ed34d762eee3450a2f9412401a61769e9f8cd3e198",
+    "bin/librarian.py": "f662b4d039ce05cd6cb3bf5b824db074ca0abcc3b1a380f9b466e762a09f1e7b",
+    "bin/lint.py": "b5f2f57b3bacd7263f76fe2e45d34a37d0ac4e4a1d9daf56bb08176f51b097c0",
+    "bin/paths.py": "509b372275faa1635cf2380fbeb2c19483a3a764c029dc02eb3f09636439e964"
+  }
+}

@@ -22,21 +22,13 @@ DATE = "2026-10-10"  # fixed, so a rebuild is not a diff; bump it when the start
 
 
 def build(where):
+    """The starter, exactly as the builder makes it. Its manifest records the seed as `starter`, not
+    a commit, so a new commit never makes it out of date."""
     vault = os.path.join(where, "starter-vault")
     subprocess.run([sys.executable, SEED, "--preset", "personal", "--dest", vault,
                     "--name", "My Second Brain", "--owner", "the owner", "--project", "its owner",
-                    "--date", DATE],
+                    "--date", DATE, "--seed-commit", "starter"],
                    check=True, capture_output=True)
-    for root, _, files in os.walk(vault):
-        for fn in files:
-            if fn.endswith(".md"):
-                path = os.path.join(root, fn)
-                with open(path, encoding="utf-8") as fh:
-                    text = fh.read()
-                fixed = text.replace(". the owner", ". The owner")
-                if fixed != text:
-                    with open(path, "w", encoding="utf-8") as fh:
-                        fh.write(fixed)
     return vault
 
 
