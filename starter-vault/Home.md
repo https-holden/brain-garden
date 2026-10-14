@@ -6,8 +6,13 @@ cssclasses:
 ---
 # My Second Brain
 
-Folders say what a note is, `categories` say what it is about. Start with [[Readme]] if you are
-new here, [[CLAUDE]] if you are a model, and [[Decisions]] for why things are the way they are.
+## Start here
+
+- [[Readme]]: the guide, if you are new here.
+- [[CLAUDE]]: what a model reads first, and [[Rules]], the detail it reads before writing.
+- [[Decisions]]: why things are the way they are.
+
+The main topics are added here as plain links as they appear, the few worth opening first.
 
 ## Notes
 

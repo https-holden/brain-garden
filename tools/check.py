@@ -7,7 +7,8 @@ Builds both presets and a custom vault into a temporary folder, runs each
 vault's own check, pushes sample files through bin/ingest.py, round-trips a
 fake chat answer through bin/librarian.py --apply, checks the daily loop's
 reply cards and action log, checks the CLAUDE.md and Rules.md split and the
-size budgets lint warns on, installs every bundled plugin, checks
+size budgets lint warns on, checks every hub opens with `## Start here` and
+lint warns on a busy hub with no plain link, installs every bundled plugin, checks
 starter-vault/ is what the seed makes today, scans this repo's own docs
 for en and em dashes, and fails when a tracked file names a term from the
 git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
@@ -635,6 +636,96 @@ def sends_to_claude_md(text):
             and re.search(r"kinds table|vault map|convention|adding a kind|mechanics", s, re.I)]
 
 
+def hubs(tmp):
+    """Hub signage: Home and every topic page open with `## Start here` above their Base embeds, the topic
+    pages ingest and the librarian make get it too, and lint warns (never errors) on a busy hub with no plain link."""
+    code, out = seed(tmp, "--preset", "personal", "--dest", "hub-brain", "--name", "Hub Brain", "--owner", "Sam")
+    check("build hub-brain", code == 0, out)
+    vault = os.path.join(tmp, "hub-brain")
+    plain = r"(?<!!)\[\[([^\]|#]+)"
+
+    def put(path, text):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def notes(topic, *names):
+        for n in names:
+            put(os.path.join(vault, "Notes", n + ".md"),
+                '---\ncategories:\n  - "[[%s]]"\ncreated: 2026-10-14\ntopics: []\n---\n%s.\n' % (topic, n))
+
+    def hub_warnings():
+        code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+        return code, [ln for ln in out.split("\n") if ln.startswith("warn") and "Start here" in ln], out
+
+    home = read(os.path.join(vault, "Home.md"))
+    start, embed = home.find("## Start here\n"), home.find("![[")
+    links = re.findall(plain, home)
+    check("Home: ## Start here above every embed, with Readme, CLAUDE, Rules and Decisions once each, "
+          "and a line saying the main topics go there",
+          0 < start < embed and sorted(links) == ["CLAUDE", "Decisions", "Readme", "Rules"]
+          and all(start < home.find("[[%s]]" % ln) < embed for ln in links)
+          and "main topics" in home[start:embed], home)
+    tpl = read(os.path.join(vault, "Templates", "Topic Template.md"))
+    check("topic template: ## Start here with no links, above the Base embed",
+          0 < tpl.find("## Start here\n") < tpl.find("![[Topics.base#In this topic]]") and not re.search(plain, tpl), tpl)
+
+    code, warned, out = hub_warnings()
+    check("lint: a fresh vault has no hub warning", code == 0 and not warned, out)
+    notes("Sleep", "Sleep one", "Sleep two", "Sleep three")
+    put(os.path.join(vault, "Categories", "Sleep.md"), tpl)
+    notes("Garden", "Garden one", "Garden two")
+    put(os.path.join(vault, "Categories", "Garden.md"), tpl)
+    code, warned, out = hub_warnings()
+    check("lint: warns on a topic used by three notes whose page has no plain link, never on one with two, "
+          "never on Home with two topic pages",
+          code == 0 and len(warned) == 1 and "Categories/Sleep.md" in warned[0] and "3 notes" in warned[0], out)
+    notes("Health", "Health one", "Health two", "Health three")
+    put(os.path.join(vault, "Categories", "Health.md"),
+        tpl.replace("## Start here\n", "## Start here\n\n- [[Health two]]\n"))
+    code, warned, out = hub_warnings()
+    check("lint: silent on a busy topic with a plain link; warns on Home at three topic pages when its "
+          "## Start here links only root documents",
+          code == 0 and len(warned) == 2 and "Categories/Sleep.md" in warned[0] and "Home.md" in warned[1], out)
+    put(os.path.join(vault, "Home.md"), home.replace("## Start here\n", "## Start here\n\n- [[Health]]\n"))
+    code, warned, out = hub_warnings()
+    check("lint: silent on Home once its ## Start here links a topic page",
+          code == 0 and len(warned) == 1 and "Categories/Sleep.md" in warned[0], out)
+
+    src = os.path.join(tmp, "hub-old-vault")
+    os.makedirs(os.path.join(src, ".obsidian"))
+    put(os.path.join(src, "Plan.md"), '---\ncategories:\n  - "[[Gardening]]"\n---\nBeans.\n')
+    code, out = run([PY, os.path.join("bin", "ingest.py"), "add", "--vault", src, "--map", ".=Notes"], cwd=vault)
+    page = read(os.path.join(vault, "Categories", "Gardening.md"))
+    check("ingest: a topic page made by a vault import has ## Start here above its embed",
+          code == 0 and 0 < page.find("## Start here\n") < page.find("![[Topics.base"), out + page)
+
+    answer = os.path.join(tmp, "hub-answer.txt")
+    fm = "---\ntags:\n  - categories\n---\n"
+    put(answer, "=== FILE: Categories/Rest.md\n%sWhat rest is.\n\n![[Topics.base#In this topic]]\n=== END\n\n"
+        "=== FILE: Categories/Food.md\n%sWhat we eat.\n\n## Start here\n\n![[Topics.base#In this topic]]\n=== END\n\n"
+        "=== FILE: Categories/Walks.md\n%sWalks.\n=== END\n\nPROPOSAL  none\n" % (fm, fm, fm))
+    code, out = run([PY, os.path.join("bin", "librarian.py"), "--apply", answer], cwd=vault)
+    rest, food, walks = (read(os.path.join(vault, "Categories", t + ".md")) for t in ("Rest", "Food", "Walks"))
+    check("librarian: --apply gives a new topic page ## Start here above its embed, once, keeping the AI's text",
+          0 < rest.find("What rest is.") < rest.find("## Start here\n") < rest.find("![[Topics.base")
+          and food.count("## Start here") == 1 and walks.rstrip().endswith("## Start here")
+          and "Walks." in walks, out + rest + food + walks)
+
+    rules, readme = read(os.path.join(vault, "Rules.md")), read(os.path.join(vault, "Readme.md"))
+    hubs_at = rules.find("## Hubs\n")
+    section = rules[hubs_at:rules.find("\n## ", hubs_at + 1)]
+    check("Rules.md: ## Hubs, right before ## Bringing things in, names the shape, 3 to 7 links, Pave and find --topic",
+          0 < hubs_at and rules.find("\n## ", hubs_at + 1) == rules.find("\n## Bringing things in")
+          and all(s in section for s in ("## Start here", "3 to 7", "tend", "Pave", "find.py --topic")), section)
+    check("Readme.md tells people about ## Start here", "Start here" in readme, readme)
+    librarian = read(os.path.join(vault, "bin", "librarian.md"))
+    check("the librarian makes a topic page with an empty ## Start here, never by copying another",
+          "## Start here" in librarian and "copy one" not in librarian, librarian)
+    kepano = read(os.path.join(vault, ".claude", "skills", "kepano-method", "references", "divergences.md"))
+    check("kepano-method lists Start here on hubs as a deliberate divergence", "## Start here" in kepano, kepano)
+
+
 def plugins(tmp):
     """Every bundled plugin is known to the builder, documented, installs, and parses."""
     sys.path.insert(0, os.path.join(ROOT, "setup"))
@@ -747,6 +838,7 @@ def main():
         find_tool(tmp)
         vault_import(tmp)
         budgets(tmp)
+        hubs(tmp)
         plugins(tmp)
     recipe_guard()
 
