@@ -450,7 +450,7 @@ def seed_brain(seeder, dest, tokens, kinds, working_memory, me=False):
     for folder in ("Categories", "Attachments"):
         seeder.write(os.path.join(dest, folder, ".gitkeep"), "")
     seeder.write(os.path.join(dest, "bin", "vault.json"), json.dumps(
-        {"kinds": schema, "draft_max_days": 14, "now_max_days": 14,
+        {"kinds": schema, "draft_max_days": 14, "now_max_days": 14, "cold_days": 90,
          "dash_exempt": [".obsidian/", ".git/", ".claude/", "bin/"], "budgets": BUDGETS}, indent=2) + "\n")
     types.update({k: PROP_TYPES[k] for k in ("aliases", "cssclasses", "tags", "modified")})
     seeder.write(os.path.join(dest, ".obsidian", "types.json"),

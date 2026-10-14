@@ -105,3 +105,11 @@ in `bin/vault.json`, its `path` outside this folder: `{"name": "recipes", "path"
 - **Dormant**: no read in 60 days, or never read. Dormant is fine.
 - **Fixed load**: the chars of vault files a session reads before its first useful action
   (its first write to a vault file or its first MCP call).
+- **Pave**: check a hot draft against its source, shorten it, link it from its topic's
+  "Start here"; the next pass asks @@OWNER@@ once whether to mark it `verified`.
+- **Signpost**: a query that missed, turned into an alias, a clearer title or a missing note.
+- **Hub**: `Home.md` or a page in `Categories/`.
+- **Bed**: a sibling git repo holding the part of the brain that others may see.
+- **Tend**: the monthly pass, the `tend` skill. Its Move cold cutoff is `cold_days` in
+  `bin/vault.json` (90 by default): older `Decisions.md` sections and daily notes move to
+  yearly files and folders.

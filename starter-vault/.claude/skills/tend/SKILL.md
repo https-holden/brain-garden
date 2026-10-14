@@ -17,6 +17,8 @@ python3 bin/paths.py
 
 Then read `.paths/report.md`, and run `python3 bin/ingest.py report` too, only when
 `bin/ingest.py` exists; `references/ingest-report.md` says what each of its sections becomes.
+Read the `## Kept` section of the newest file in `.paths/reports/`: what was kept there is
+decided and stays off the list unless its reason changed.
 
 The reports are the evidence: propose from them, and open a note only to check an item that is
 already on the list. Nothing dormant is named: the paths report gives dormant notes as counts
@@ -57,15 +59,18 @@ recipe in `CLAUDE.md`, then propose the fix: an alias, a clearer title or a miss
 
 ### Move cold
 
-By rule and date, never by note name. The cutoff is 90 days unless `Decisions.md` records
-another.
+By rule and date, never by note name. The reports do not list these; find them as below. The
+cutoff is `cold_days` in `bin/vault.json` (90 when it is missing).
 
-- `Decisions.md` sections older than the cutoff move to `Decisions/Archive YYYY.md`, one file
-  per year, newest first, with one pointer line left in `Decisions.md`.
-- Daily notes older than the cutoff move to `Daily/YYYY/`.
-- Clippings no session has read: while the ledger is under 60 days old (the report's
-  "Ledger started" date), one line with their count and nothing more. After that, the unused
-  ones come up under Prune, from the ingest report.
+- `Decisions.md`: its `## YYYY-MM-DD` headings date each section. Sections older than the
+  cutoff move to `Decisions/Archive YYYY.md`, one file per year, newest first, with one
+  pointer line left in `Decisions.md`. A section that sets a rule tend follows (a budget, a
+  kept item, a stopped source) stays in `Decisions.md` whatever its age.
+- `Daily/`: the file names are the dates. `Daily/YYYY-MM-DD.md` notes older than the cutoff
+  move to `Daily/YYYY/`.
+- Clippings no session has read: the Clippings figure in the report's Dormant line. While the
+  ledger is under 60 days old (the report's "Ledger started" date), one line with that count
+  and nothing more. After that, the unused ones come up under Prune, from the ingest report.
 
 ### Prune
 
@@ -76,8 +81,9 @@ about, as `references/ingest-report.md` maps it.
 ### Keep
 
 What a report flags that should stay as it is, with the reason, so it is decided and not
-re-proposed. A file that earns a bigger budget is kept by giving it its own budget in
-`bin/vault.json` (a `Decisions.md` entry says why).
+re-proposed. Every Keep item is recorded under `## Kept` at the end of the dated pass report
+(step 4), which the next pass reads. A file that earns a bigger budget is also given its own
+budget in `bin/vault.json`, with a `Decisions.md` entry saying why.
 
 After Keep, when the report lists notes under "Paved, waiting for your verify", show them
 once, numbered on, as one batch question: "These were paved last time. Mark them all
@@ -103,13 +109,14 @@ Approved numbers only, in list order, one commit each when the vault is a git re
 3. **Moves keep their links.** Move with `obsidian move`, or grep every inbound `[[link]]`
    and fix it in the same commit. A file is moved, never deleted, except a clipping or an
    attachment through `bin/ingest.py trash`.
-4. **Rules changed get an entry.** A budget raised, a cutoff changed, a source stopped or a
-   topic retired: a dated entry in `Decisions.md`.
+4. **Rules changed get an entry.** A budget raised, `cold_days` changed, a source stopped or
+   a topic retired: a dated entry in `Decisions.md`.
 
 ## 4. Finish
 
 Run `python3 bin/paths.py --pass`: it records today as the last pass and saves the report as
-`.paths/reports/YYYY-MM-DD.md`. Then `python3 bin/lint.py`, fixing every error, and commit the
-dated report (with any lint fix) as the pass's last commit. Report in three lines: what was paved and compacted, what was moved or cut, and what
+`.paths/reports/YYYY-MM-DD.md`. Append `## Kept` to that file: one line per Keep item, with
+its reason. Then `python3 bin/lint.py`, fixing every error, and commit the dated report (with
+any lint fix) as the pass's last commit. Report in three lines: what was paved and compacted, what was moved or cut, and what
 the next pass should watch. Then one line on the process: what the reports keep flagging,
 and the smallest change that would stop it at its source.
