@@ -7,8 +7,10 @@ Builds both presets and a custom vault into a temporary folder, runs each
 vault's own check, pushes sample files through bin/ingest.py, round-trips a
 fake chat answer through bin/librarian.py --apply, checks the daily loop's
 reply cards and action log, installs every bundled plugin, checks
-starter-vault/ is what the seed makes today, and scans this repo's own docs
-for en and em dashes. Prints one line per check and exits 1 if any failed.
+starter-vault/ is what the seed makes today, scans this repo's own docs
+for en and em dashes, and fails when a tracked file names a term from the
+git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
+any failed. The pre-commit hook in .githooks/ and the CI job run it.
 """
 import base64
 import json
@@ -250,6 +252,40 @@ def plugins(tmp):
         print("skip  plugins parse as JavaScript (no node on this machine)")
 
 
+def never_share():
+    """No tracked file names a term from tools/never-share.txt: one term per line, `#` for comments,
+    matched case-insensitively as a whole word. The list is git-ignored, so it never ships; without it
+    (a fresh clone, CI) the check is skipped."""
+    path = os.path.join(ROOT, "tools", "never-share.txt")
+    if not os.path.exists(path):
+        print("skip  never-share terms (no tools/never-share.txt on this machine)")
+        return
+    try:
+        ignored = subprocess.run(["git", "-C", ROOT, "check-ignore", "-q", path]).returncode == 0
+        tracked = subprocess.run(["git", "-C", ROOT, "ls-files", "-z"], capture_output=True).stdout
+    except OSError as exc:
+        check("never-share terms", False, "git is needed to list the tracked files: %s" % exc)
+        return
+    check("tools/never-share.txt is git-ignored", ignored, "add it to .gitignore before anything else")
+    with open(path, encoding="utf-8") as fh:
+        terms = [t.strip() for t in fh if t.strip() and not t.lstrip().startswith("#")]
+    if not terms:
+        return
+    pattern = re.compile(r"(?<!\w)(%s)(?!\w)" % "|".join(re.escape(t) for t in terms), re.I)
+    hits = []
+    for rel in tracked.decode("utf-8").split("\0"):
+        full = os.path.join(ROOT, rel)
+        if not rel or not os.path.isfile(full):
+            continue
+        try:
+            with open(full, encoding="utf-8") as fh:
+                lines = fh.read().split("\n")
+        except UnicodeDecodeError:
+            continue
+        hits += ["%s:%d: %s" % (rel, n, m.group(1)) for n, line in enumerate(lines, 1) for m in pattern.finditer(line)]
+    check("no tracked file names a never-share term (%d terms)" % len(terms), not hits, "\n".join(hits[:40]))
+
+
 def main():
     for root, _, files in os.walk(ROOT):
         if "/.git" in root:
@@ -303,6 +339,7 @@ def main():
                 if re.search("[–—]", open(path, encoding="utf-8").read()):
                     dashes.append(os.path.relpath(path, ROOT))
     check("no en or em dashes in the repo's own docs", not dashes, ", ".join(dashes))
+    never_share()
     print("\n%s" % ("all checks passed" if not failed else "%d failed: %s" % (len(failed), "; ".join(failed))))
     sys.exit(1 if failed else 0)
 

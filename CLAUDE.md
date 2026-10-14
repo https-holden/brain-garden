@@ -19,14 +19,16 @@ This repo sets people up with an Obsidian second brain. Two kinds of session ope
   Command Line Tools ship). `pypdf` is the one optional extra, and only for PDF text.
 - `starter-vault/` is generated: never edit it by hand. After changing `template/` or
   `build_vault.py`, run `python3 tools/build_starter.py`.
-- Run `python3 tools/check.py` before committing (also with `/usr/bin/python3` when touching
-  scripts). It needs no network and no AI.
+- `python3 tools/check.py` is the test suite (no network, no AI). The pre-commit hook in
+  `.githooks/` runs it under `python3` and `/usr/bin/python3`; enable it once per clone with
+  `git config core.hooksPath .githooks`. CI runs it on every push.
 - The brain template started as the second-brain archetype of the sister repo
   ObsidianVaultSeed (roadmap and lexicon vaults for code projects). The two now evolve
   separately; port a fix across by hand when it applies to both.
 - Nothing personal or employer-specific goes in this repo: no real names, clients, companies,
   hostnames or account ids in the template, guides or examples. "Sam" and "Acme" are the
-  examples.
+  examples. `check.py` fails on any term in the git-ignored `tools/never-share.txt`; add a
+  name to it the moment one shows up in a session.
 - No en or em dashes in any file (the check scans the docs).
 - The headless librarian's permission rules: file writes of every kind are matched by
   `Edit(...)` rules (there is no `Write(...)` rule), and `--restricted` is added only when the

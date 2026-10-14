@@ -1,0 +1,26 @@
+#!/bin/sh
+# Runs tools/check.py before every commit, under the default python3 and under
+# /usr/bin/python3 (the 3.9 Apple ships, which every vault script must support).
+# Enable once per clone:  git config core.hooksPath .githooks
+# Quiet when green, the full output when not.
+
+# git exports GIT_DIR, GIT_INDEX_FILE and friends to hooks. A check that runs git
+# in a temporary folder must not inherit them, or it acts on this repo instead.
+for v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+status=0
+seen=""
+for py in python3 /usr/bin/python3; do
+    path=$(command -v "$py" 2>/dev/null) || continue
+    case " $seen " in *" $path "*) continue ;; esac
+    seen="$seen $path"
+    if out=$("$path" tools/check.py 2>&1); then
+        echo "pre-commit: tools/check.py passed ($("$path" --version 2>&1))"
+    else
+        echo "$out"
+        echo "pre-commit: tools/check.py failed under $path; commit refused"
+        status=1
+    fi
+done
+exit $status

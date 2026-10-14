@@ -1,0 +1,2 @@
+# Local only: terms tools/check.py refuses in any tracked file
+tools/never-share.txt
