@@ -968,7 +968,7 @@ def tend_and_nudge(tmp):
     settings = json.loads(read(os.path.join(tmp, "sam-brain", ".claude", "settings.json")) or "{}")
     starts = (settings.get("hooks") or {}).get("SessionStart") or []
     check("planting adds the SessionStart hook that runs due mode on startup", starts == [
-        {"matcher": "startup", "hooks": [{"type": "command", "command": "python3 bin/paths.py due"}]}], str(starts))
+        {"matcher": "startup", "hooks": [{"type": "command", "command": "python3 bin/paths.py due --hook"}]}], str(starts))
 
     home = os.path.join(tmp, "tend-home")
     os.makedirs(home)
@@ -1125,6 +1125,29 @@ def tend_and_nudge(tmp):
           and ours[0]["matcher"] == "startup" and data["hooks"]["PreToolUse"] == theirs["hooks"]["PreToolUse"]
           and "Bash(ls:*)" in data["permissions"]["allow"]
           and "Bash(python3 bin/paths.py:*)" in data["permissions"]["allow"], json.dumps(data, indent=1))
+    with open(os.path.join(host, "CLAUDE.md"), "a", encoding="utf-8") as fh:
+        fh.write("A line that makes the index too long to load every session.\n" * 200)
+    code, out = run([PY, os.path.join("bin", "paths.py"), "due", "--hook"], cwd=host)
+    try:
+        shown = json.loads(out)
+    except ValueError:
+        shown = {}
+    check("paths due --hook prints hook JSON whose systemMessage shows the line to the owner",
+          code == 0 and "tend" in shown.get("systemMessage", "")
+          and shown.get("hookSpecificOutput", {}).get("hookEventName") == "SessionStart", out)
+
+    repo = os.path.join(tmp, "hook-repo")
+    os.makedirs(repo)
+    subprocess.run(["git", "init", "-q", repo], env=no_git_env(), capture_output=True)
+    for _ in range(2):
+        code, out = seed(tmp, "--dest", os.path.join("hook-repo", "café brain"), "--name", "Cafe Brain",
+                         "--owner", "Sam")
+    data = json.loads(read(os.path.join(repo, ".claude", "settings.json")) or "{}")
+    cmds = [h.get("command", "") for s in (data.get("hooks") or {}).get("SessionStart") or [] for h in s.get("hooks", [])]
+    cmds = [c for c in cmds if "paths.py" in c]
+    res = subprocess.run(cmds[0] if cmds else "false", shell=True, cwd=repo, capture_output=True, text=True)
+    check("a vault in a repo folder with a space and an accent gets one quoted hook that runs from the repo root",
+          code == 0 and len(cmds) == 1 and res.returncode == 0, "%s\n%s%s" % (cmds, res.stdout, res.stderr))
 
 
 def tend_docs():

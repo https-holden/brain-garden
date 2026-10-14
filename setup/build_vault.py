@@ -31,6 +31,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -291,7 +292,8 @@ def merge_settings(seeder, repo_root, stop_cmd=None, allow=(), start_cmd=None):
                                      "statusMessage": "Checking the vault write-back"}]})
     if start_cmd:
         starts = data.setdefault("hooks", {}).setdefault("SessionStart", [])
-        if start_cmd not in json.dumps(starts):
+        if not any(h.get("command") == start_cmd for e in starts if isinstance(e, dict)
+                   for h in e.get("hooks", []) if isinstance(h, dict)):
             starts.append({"matcher": "startup", "hooks": [{"type": "command", "command": start_cmd}]})
     if allow:
         rules = data.setdefault("permissions", {}).setdefault("allow", [])
@@ -558,7 +560,7 @@ def main():
     if "Clippings" in kinds:
         allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
     # The nudge: on startup Claude Code runs due mode, which prints one line only when tend is due.
-    merge_settings(seeder, repo_root, allow=allow, start_cmd="python3 %sbin/paths.py due" % prefix)
+    merge_settings(seeder, repo_root, allow=allow, start_cmd="python3 %s due --hook" % shlex.quote(prefix + "bin/paths.py"))
     if plugins:
         add_plugins(seeder, dest, plugins, tokens)
     if args.accent:

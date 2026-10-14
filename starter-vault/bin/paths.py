@@ -839,6 +839,8 @@ def main():
                     help="refresh, record today as the last pass, save the report in .paths/reports/")
     ap.add_argument("--paved", action="append", default=[], metavar="NOTE",
                     help="refresh, and record this note (vault-relative path) as paved today; repeatable")
+    ap.add_argument("--hook", action="store_true",
+                    help="with due: print the line as Claude Code hook JSON, so it shows on screen")
     ap.add_argument("--today", help="YYYY-MM-DD to count from instead of today (for tests)")
     ap.add_argument("--transcripts", action="append", default=[], metavar="DIR",
                     help="a folder of Claude Code transcripts (.jsonl) of this vault to read as well")
@@ -851,7 +853,11 @@ def main():
         if args.pass_ or args.paved:
             ap.error("--pass and --paved go with a refresh, not with due")
         line = due(VAULT, today)
-        if line:
+        if line and args.hook:
+            # A SessionStart hook's plain output reaches only the AI; systemMessage shows it to the owner.
+            print(json.dumps({"systemMessage": line, "hookSpecificOutput": {
+                "hookEventName": "SessionStart", "additionalContext": line}}))
+        elif line:
             print(line)
         return 0
     vault, paved = Vault(VAULT), []
