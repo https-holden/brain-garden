@@ -13,13 +13,15 @@ transcripts in tools/fixtures/paths/, sends notes to two beds through
 bin/beds.py and pulls edits back (git in temporary folders, a local bare repo
 for the remote), checks the tend skill, the dated report a pass saves, due mode
 and its SessionStart hook, and that nothing sends the reader to the skill tend
-replaced, installs every bundled plugin, checks
-starter-vault/ is what the seed makes today, scans this repo's own docs
-for en and em dashes, and fails when a tracked file names a term from the
-git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
+replaced, installs every bundled plugin, upgrades a vault planted earlier
+(build_vault.py --upgrade: the manifest, .new files, a dry run, a second run
+that changes nothing), checks starter-vault/ is what the seed makes today,
+scans this repo's own docs for en and em dashes, and fails when a tracked
+file names a term from the git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
 any failed. The pre-commit hook in .githooks/ and the CI job run it.
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -1273,6 +1275,196 @@ def hubs(tmp):
     check("kepano-method lists Start here on hubs as a deliberate divergence", "## Start here" in kepano, kepano)
 
 
+def upgrade(tmp):
+    """build_vault.py --upgrade. Planting writes bin/seed-manifest.json, and a rerun leaves it alone. An old
+    vault (planted today, then stripped of what tickets 01 to 07 added, its manifest gone and the old monthly
+    skill back) gets every new file, key, line and hook, with nothing it already had changed; a seed file the
+    owner edited gets a .new beside it and an unedited one is replaced; --dry-run writes nothing; a second
+    upgrade is a no-op; lint passes after."""
+    tmp = os.path.realpath(tmp)
+    template = os.path.join(ROOT, "template", "brain")
+
+    def sha(data):
+        return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+    def raw(path):
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def put(vault, rel, data):
+        path = os.path.join(vault, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(data.encode("utf-8") if isinstance(data, str) else data)
+
+    def up(vault, *more):
+        return seed(tmp, "--upgrade", "--dest", vault, *more)
+
+    code, out = run(["git", "-C", ROOT, "rev-parse", "HEAD"], env=no_git_env())
+    head = out.strip() if code == 0 else "unknown"
+    plant = ["--preset", "personal", "--name", "Sam's Brain", "--owner", "Sam", "--plugins", "home-button",
+             "--accent", "#3a7d44", "--date", "2026-09-01", "--dest"]
+    code, out = seed(tmp, *(plant + ["manifest-brain"]))
+    vault = os.path.join(tmp, "manifest-brain")
+    mpath = os.path.join(vault, "bin", "seed-manifest.json")
+    manifest = json.loads(read(mpath) or "{}")
+    files, options = manifest.get("files") or {}, manifest.get("options") or {}
+    owned = ["bin/find.py", "bin/lint.py", "bin/paths.py", "bin/beds.py", "bin/ingest.py", "bin/librarian.md",
+             ".claude/skills/tend/SKILL.md", ".claude/skills/tend/references/ingest-report.md",
+             ".claude/skills/start-of-day/SKILL.md", "Templates/Bases/Everything.base",
+             ".obsidian/snippets/vault.css", ".obsidian/plugins/home-button/main.js"]
+    mine = ["CLAUDE.md", "Rules.md", "Home.md", "Now.md", "Me.md", "bin/vault.json", "Templates/Note Template.md",
+            "Templates/Topic Template.md", "Templates/Bases/Notes.base", ".paths/index.txt", ".claude/settings.json"]
+    wrong = ([rel for rel in owned if files.get(rel) != sha(raw(os.path.join(vault, rel)))]
+             + [rel for rel in mine if rel in files])
+    check("planting writes bin/seed-manifest.json: the seed's commit, the date, the options, and a sha256 for "
+          "each seed-owned file, none for a root document, a template, bin/vault.json or settings",
+          code == 0 and manifest.get("seed") == head and manifest.get("planted") == "2026-09-01"
+          and options.get("name") == "Sam's Brain" and options.get("plugins") == ["home-button"]
+          and options.get("accent") == "#3a7d44" and not wrong, "%s\n%s" % (wrong, read(mpath)[:1500]))
+    before, css = read(mpath), read(os.path.join(vault, ".obsidian", "snippets", "vault.css"))
+    seed(tmp, *(plant + ["manifest-brain"]))
+    seed(tmp, *(plant + ["manifest-brain-2"]))
+    check("a rerun of the builder leaves the manifest (and the accent) as they were, and the same options plant "
+          "the same manifest byte for byte",
+          before != "" and read(mpath) == before and css == read(os.path.join(vault, ".obsidian", "snippets", "vault.css"))
+          and read(os.path.join(tmp, "manifest-brain-2", "bin", "seed-manifest.json")) == before)
+    starter = json.loads(read(os.path.join(ROOT, "starter-vault", "bin", "seed-manifest.json")) or "{}")
+    check("starter-vault/ carries its manifest, with the seed recorded as starter (no commit, so a commit never "
+          "makes it stale)", starter.get("seed") == "starter" and "bin/find.py" in (starter.get("files") or {}))
+
+    # An old vault: planted before tickets 01 to 08, simulated by stripping a fresh one (CI clones shallow).
+    code, out = seed(tmp, "--preset", "personal", "--dest", "old-brain", "--name", "Old Brain", "--owner", "Sam",
+                     "--date", "2026-09-01")
+    vault = os.path.join(tmp, "old-brain")
+    note = read(os.path.join(vault, "Templates", "Note Template.md")).replace("{{date}}", "2026-09-02")
+    put(vault, "Notes/Sleep comes before focus.md", note + "Sleep first, then the hard work.\n")
+    put(vault, "Daily/2026-09-02.md", read(os.path.join(vault, "Templates", "Daily Note Template.md"))
+        + "- Slept nine hours.\n")
+    put(vault, "Now.md", read(os.path.join(vault, "Now.md")) + "\n- Plant the beans. 2026-09-02\n")
+    for rel in ("bin/seed-manifest.json", "bin/find.py", "bin/paths.py", "bin/beds.py", "Rules.md"):
+        os.remove(os.path.join(vault, rel))
+    shutil.rmtree(os.path.join(vault, ".paths"))
+    shutil.rmtree(os.path.join(vault, ".claude", "skills", "tend"))
+    put(vault, ".claude/skills/prune/SKILL.md", "---\nname: prune\n---\nThe old monthly pass.\n")
+    put(vault, "bin/lint.py", raw(os.path.join(vault, "bin", "lint.py")) + b"\n# Sam: my own tweak\n")
+    claude = read(os.path.join(vault, "CLAUDE.md"))
+    put(vault, "CLAUDE.md", claude.replace("## Looking things up: the one recipe", "## Looking things up"))
+    config = json.loads(read(os.path.join(vault, "bin", "vault.json")))
+    budgets = config.pop("budgets")
+    config["draft_max_days"] = 30
+    put(vault, "bin/vault.json", json.dumps(config, indent=2) + "\n")
+    new_lines = [".paths/find.log", ".paths/ledger.json", ".paths/report.md", "bin/never-share.txt"]
+    ignore = read(os.path.join(vault, ".gitignore"))
+    old_ignore = ignore.split("\n\n# The find log", 1)[0] + "\n\nsecret/\n"
+    put(vault, ".gitignore", old_ignore)
+    settings = json.loads(read(os.path.join(vault, ".claude", "settings.json")))
+    hook = settings["hooks"].pop("SessionStart")
+    settings["hooks"]["Stop"] = [{"hooks": [{"type": "command", "command": "echo done"}]}]
+    new_rules = [r for r in settings["permissions"]["allow"] if "find.py" in r or "paths.py" in r]
+    old_rules = [r for r in settings["permissions"]["allow"] if r not in new_rules] + ["Bash(ls:*)"]
+    settings["permissions"]["allow"] = old_rules
+    put(vault, ".claude/settings.json", json.dumps(settings, indent=2) + "\n")
+    tree = files_in(vault)
+
+    code, out = up(vault, "--dry-run")
+    check("upgrade --dry-run prints the plan and changes nothing (every file hashed before and after)",
+          code == 0 and files_in(vault) == tree and "bin/find.py" in out and "Rules.md" in out
+          and "nothing written" in out, out)
+    code, out = up(vault)
+    after = files_in(vault)
+    gone = [rel for rel in ("bin/find.py", ".paths/index.txt", "bin/paths.py", "bin/beds.py", "Rules.md",
+                            ".claude/skills/tend/SKILL.md", ".claude/skills/tend/references/ingest-report.md",
+                            "bin/seed-manifest.json") if rel not in after]
+    check("upgrade on an old vault says what it inferred, then adds the find tool, the index, the paths and beds "
+          "scripts, tend, Rules.md and the manifest",
+          code == 0 and not gone and "inferred" in out and "Old Brain" in out, "%s\n%s" % (gone, out))
+    upgraded = json.loads(after.get("bin/vault.json", b"{}").decode("utf-8"))
+    check("upgrade adds the budgets to bin/vault.json and changes no value already there",
+          upgraded.get("budgets") == budgets and upgraded.get("draft_max_days") == 30
+          and upgraded.get("kinds") == config["kinds"], json.dumps(upgraded))
+    text = after.get(".gitignore", b"").decode("utf-8")
+    check("upgrade appends the new .gitignore lines once each and keeps every line there",
+          text.startswith(old_ignore) and all(text.split("\n").count(ln) == 1 for ln in new_lines), text)
+    merged = json.loads(after.get(".claude/settings.json", b"{}").decode("utf-8"))
+    check("upgrade merges the SessionStart hook and the new allow rules, removing and duplicating nothing",
+          merged.get("hooks", {}).get("SessionStart") == hook and merged["hooks"].get("Stop") == settings["hooks"]["Stop"]
+          and merged.get("permissions", {}).get("allow") == old_rules + new_rules, json.dumps(merged))
+    check("upgrade keeps the old monthly skill and lists it as retired, with tend in its place",
+          after.get(".claude/skills/prune/SKILL.md") == tree[".claude/skills/prune/SKILL.md"]
+          and re.search(r"retired.*prune.*tend", out), out)
+    check("a seed file the owner edited is left alone, the seed's version beside it as .new, and listed",
+          after["bin/lint.py"] == tree["bin/lint.py"] and "bin/lint.py.new" in out
+          and after.get("bin/lint.py.new") == raw(os.path.join(template, "bin", "lint.py")), out)
+    check("CLAUDE.md is left alone; CLAUDE.md.new holds the seed's, and the AI is told to merge it with the owner "
+          "as a numbered list",
+          after["CLAUDE.md"] == tree["CLAUDE.md"] and after.get("CLAUDE.md.new") == claude.encode("utf-8")
+          and "numbered list" in out, out)
+    changed = [rel for rel in tree if after.get(rel) != tree[rel]
+               and rel not in (".gitignore", "bin/vault.json", ".claude/settings.json")]
+    check("upgrade changes no note, root document, template or other file the vault had, byte for byte",
+          not changed, ", ".join(changed))
+    code, lint = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    found = run([PY, os.path.join("bin", "find.py"), "sleep"], cwd=vault)[1]
+    check("lint passes on the upgraded vault, and the index has its notes",
+          code == 0 and "Notes/Sleep comes before focus" in found, lint + found)
+    tree = files_in(vault)
+    code, out = up(vault)
+    check("a second upgrade is a no-op and says so", code == 0 and files_in(vault) == tree
+          and "nothing to upgrade" in out, out)
+
+    # A vault with a manifest: an unedited seed file is replaced, an edited one gets a .new.
+    code, out = seed(tmp, "--preset", "work", "--dest", "kept-brain", "--name", "Kept Brain", "--owner", "Sam")
+    vault = os.path.join(tmp, "kept-brain")
+    manifest = json.loads(read(os.path.join(vault, "bin", "seed-manifest.json")) or "{}")
+    kepano, older = ".claude/skills/kepano-method/SKILL.md", b"The kepano skill as an older seed shipped it.\n"
+    put(vault, kepano, older)
+    manifest["files"][kepano] = sha(older)
+    find_edit = raw(os.path.join(vault, "bin", "find.py")) + b"# Sam: my own line\n"
+    put(vault, "bin/find.py", find_edit)
+    manifest["files"]["bin/find.py"] = sha(b"find.py as an older seed shipped it\n")
+    beds_edit = raw(os.path.join(vault, "bin", "beds.py")) + b"# Sam: mine, and the seed has not changed it\n"
+    put(vault, "bin/beds.py", beds_edit)
+    put(vault, ".claude/skills/prune/SKILL.md", "The old monthly pass.\n")
+    manifest["files"][".claude/skills/prune/SKILL.md"] = sha(b"The old monthly pass.\n")
+    put(vault, "bin/seed-manifest.json", json.dumps(manifest, indent=2) + "\n")
+    put(vault, "CLAUDE.md", read(os.path.join(vault, "CLAUDE.md")) + "\n## Sam's own rule\n\nShort answers.\n")
+    put(vault, "Knowledge/Rest beats caffeine.md", "---\ncategories: []\ncreated: 2026-10-01\nstatus: draft\n"
+        "source: \"\"\n---\nRest first.\n")
+    shutil.rmtree(os.path.join(vault, "Categories"))
+    os.remove(os.path.join(vault, ".paths", "index.txt"))
+    tree = files_in(vault)
+    code, out = up(vault)
+    after = files_in(vault)
+    check("an unedited seed file is replaced with the seed's current one",
+          after.get(kepano) == raw(os.path.join(template, "dot-claude", "skills", "kepano-method", "SKILL.md"))
+          and kepano in out, out)
+    check("an edited seed file keeps the owner's bytes and gets a .new, listed; one the seed has not changed since "
+          "planting gets nothing",
+          after["bin/find.py"] == find_edit and after.get("bin/find.py.new") == raw(os.path.join(template, "bin", "find.py"))
+          and "bin/find.py.new" in out and after["bin/beds.py"] == beds_edit and "bin/beds.py.new" not in after, out)
+    check("missing folders and files come back (Categories/, .paths/index.txt); an edited CLAUDE.md gets no .new "
+          "while the seed's is unchanged",
+          "Categories/.gitkeep" in after and ".paths/index.txt" in after and "CLAUDE.md.new" not in after, out)
+    check("a retired file the manifest lists is kept and listed",
+          ".claude/skills/prune/SKILL.md" in after and re.search(r"retired.*prune", out), out)
+    changed = [rel for rel in tree if after.get(rel) != tree[rel] and rel not in (kepano, "bin/seed-manifest.json")]
+    recorded = json.loads(after["bin/seed-manifest.json"].decode("utf-8")).get("files", {})
+    check("nothing else changed, and the manifest now records the seed's current files",
+          not changed and recorded.get(kepano) == sha(after[kepano])
+          and recorded.get("bin/find.py") == sha(after["bin/find.py.new"])
+          and ".claude/skills/prune/SKILL.md" not in recorded, ", ".join(changed))
+    tree = files_in(vault)
+    code, out = up(vault)
+    check("a second upgrade of that vault is a no-op too", code == 0 and files_in(vault) == tree
+          and "nothing to upgrade" in out, out)
+
+    missing = [doc for doc in ("README.md", "AGENTS.md")
+               if not all(s in read(os.path.join(ROOT, doc)) for s in ("--upgrade", "--dry-run", ".new"))]
+    check("README.md and AGENTS.md say how to update a vault: --upgrade, a dry run first, then the .new files",
+          not missing, ", ".join(missing))
+
+
 def plugins(tmp):
     """Every bundled plugin is known to the builder, documented, installs, and parses."""
     sys.path.insert(0, os.path.join(ROOT, "setup"))
@@ -1764,6 +1956,7 @@ def main():
         beds(tmp)
         tend_and_nudge(tmp)
         plugins(tmp)
+        upgrade(tmp)
     recipe_guard()
     tend_docs()
 

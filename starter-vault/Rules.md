@@ -21,7 +21,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `Categories/` | One page per topic in use: `tags: [categories]`, a `## Start here` of plain links, `![[Topics.base#In this topic]]`. Every link here must resolve. | Topics with no notes yet. |
 | `Templates/`, `Templates/Bases/` | One template and one Base per kind, plus the general Bases (`Everything`, `Topics`, `Related`, `Backlinks`, `Attachments`). Core `{{date}}` syntax only. | Templater syntax. |
 | `Attachments/` | Every file, flat. | Subfolders. |
-| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets, beds), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `beds.py` (sends notes to beds), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. | Secrets, logs in git. |
+| `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets, beds), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `beds.py` (sends notes to beds), `ingest.py` (bring things in), `librarian.py` and `librarian.md` (file them). Re-runnable maintenance scripts. `seed-manifest.json`: what Brain Garden planted, so an upgrade replaces only the files nobody edited. | Secrets, logs in git. |
 | `.obsidian/` | Tracked config, the `vault.css` snippet, any home-made plugins. Document a new plugin in `Readme.md`. | Content. |
 | `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. `ledger.json` and `report.md`: the footsteps and the report `bin/paths.py` keeps, on this machine. `reports/`: the report as each `tend` pass left it, committed. | Hand edits. |
 

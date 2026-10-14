@@ -5,6 +5,8 @@
     build_vault.py --preset work     --dest ~/Documents/Obsidian/sam-work-brain --name "Sam's Work Brain" --owner Sam
     build_vault.py --kinds Notes,People,Clippings,Daily --working-memory --me --dest ... --name ...
     build_vault.py --self-update     pull this repo
+    build_vault.py --upgrade --dest ~/Documents/Obsidian/sam-brain --dry-run
+                                     bring a vault planted earlier up to this seed
 
 Presets: `personal` (a life: your notes, references, people, clippings, days) and
 `work` (a job: claims, procedures, people, meetings, clippings, days). Both get
@@ -15,10 +17,22 @@ setup/windows.ps1 call this for you.
 Rules it keeps:
 
 - It never overwrites. A file that already exists is left alone and reported
-  as "kept", so it is safe to rerun and to point at a half-built vault.
+  as "kept", so it is safe to rerun and to point at a half-built vault. The one
+  exception is --upgrade, below, and only for a seed file nobody edited.
 - It writes structure, never content. No note a person would have authored
   comes out of this script.
 - --dry-run prints exactly what a real run would write and touches nothing.
+- Planting writes bin/seed-manifest.json: the seed's commit, the date, the
+  options, and a sha256 of every file the seed owns (the bin/ scripts and their
+  docs, the skills, the general Bases, the CSS snippet, the bundled plugins).
+- --upgrade plants the same vault afresh in a temporary folder and compares. It
+  adds what is missing; replaces a seed-owned file the owner never edited (its
+  hash is still the manifest's); writes `<file>.new` beside one they edited, and
+  `CLAUDE.md.new` when the seed's CLAUDE.md changed, for the AI to merge with
+  the owner as a numbered list; adds new keys to bin/vault.json, new lines to
+  .gitignore and the hooks and permissions to settings, never changing what is
+  there; and never touches a note, a template or a root document's content. A
+  vault with no manifest has its options read from its own files.
 - The vault's folder carries a name. Obsidian lists a vault by its folder name
   and nothing else, so a folder called `vault` or `brain` is refused.
 """
@@ -26,8 +40,11 @@ from __future__ import annotations
 
 import argparse
 import colorsys
+import contextlib
 import datetime
+import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -35,6 +52,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))  # the repo
 ASSETS = os.path.join(SKILL_DIR, "template")
@@ -47,6 +65,11 @@ KNOWN_PLUGINS = ["auto-alias", "home-button", "manual-modified", "response-cards
 GENERIC_DIRS = {
     "vault", "brain", "notes", "obsidian", "second-brain", "knowledge", "kb", "wiki",
 }
+
+MANIFEST = "bin/seed-manifest.json"
+# Skills the seed shipped once and ships no more, each with the skill that took its place.
+# An upgrade lists one it finds and never deletes it.
+RETIRED_SKILLS = {'prune': 'tend'}
 
 
 def slug(text):
@@ -195,8 +218,10 @@ def kind_base(folder, spec):
 class Seeder:
     def __init__(self, dry):
         self.dry, self.made, self.kept = dry, [], []
+        self.wrote = {}  # path: the bytes the seed has for it, written or kept
 
     def write(self, path, data, binary=False):
+        self.wrote[path] = data if binary else data.encode("utf-8")
         if os.path.exists(path):
             self.kept.append(path)
             return False
@@ -231,6 +256,9 @@ class Seeder:
 
 
 def sub(text, tokens):
+    owner = tokens.get("OWNER", "")
+    if owner:  # a sentence that starts with the owner starts with a capital, even "the owner"
+        text = text.replace(". @@OWNER@@", ". " + owner[:1].upper() + owner[1:])
     for key, val in tokens.items():
         text = text.replace("@@%s@@" % key, val)
     return text
@@ -270,7 +298,8 @@ def self_update():
 
 def merge_settings(seeder, repo_root, stop_cmd=None, allow=(), start_cmd=None):
     """Add a Stop hook, a SessionStart hook and/or permission rules to .claude/settings.json without
-    disturbing the rest. Each is added once: a rebuild finds it there and leaves it."""
+    disturbing the rest. Each is added once: a rebuild finds it there and leaves it. True when it
+    changed the file (or, in a dry run, would)."""
     path = os.path.join(repo_root, ".claude", "settings.json")
     data = {}
     if os.path.exists(path):
@@ -283,7 +312,7 @@ def merge_settings(seeder, repo_root, stop_cmd=None, allow=(), start_cmd=None):
                 print("      Stop hook: %s" % stop_cmd)
             if start_cmd:
                 print("      SessionStart hook (matcher startup): %s" % start_cmd)
-            return
+            return False
     before = json.dumps(data, sort_keys=True)
     if stop_cmd:
         stops = data.setdefault("hooks", {}).setdefault("Stop", [])
@@ -301,13 +330,14 @@ def merge_settings(seeder, repo_root, stop_cmd=None, allow=(), start_cmd=None):
             if rule not in rules:
                 rules.append(rule)
     if json.dumps(data, sort_keys=True) == before:
-        return
+        return False
     print("build: %s .claude/settings.json" % ("would update" if seeder.dry else "updated"))
     if not seeder.dry:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
             fh.write("\n")
+    return True
 
 
 def accent_css(hex_colour):
@@ -494,6 +524,355 @@ def add_plugins(seeder, dest, plugins, tokens):
                 fh.write("\n".join(kept))
 
 
+# ------------------------------------------------------------ planting
+
+
+def vault_tokens(opts, dest, date):
+    """The tokens for a vault at dest, and the folder its .claude/settings.json lives in (the git
+    repo's root when the vault sits inside one, else the vault)."""
+    repo = git_root(dest)
+    repo_root = repo or dest
+    vault_path = os.path.relpath(dest, repo_root)
+    prefix = "" if vault_path == "." else vault_path.replace(os.sep, "/") + "/"
+    tokens = dict(
+        VAULT_NAME=opts["name"], PROJECT=opts["project"],
+        VAULT_PATH=("`%s`" % prefix if prefix else "the repo root" if repo else "the top of this folder"),
+        VAULT_PREFIX=prefix, DATE=date, OWNER=opts["owner"], HOME_NOTE="Home",
+    )
+    return tokens, repo_root
+
+
+def plant(seeder, dest, opts, tokens, settings_root):
+    """Plant the vault opts describe at dest. Returns the allow rules and the SessionStart command
+    merged into settings_root's .claude/settings.json, so an upgrade can merge the same."""
+    kinds, prefix = opts["kinds"], tokens["VAULT_PREFIX"]
+    seed_brain(seeder, dest, tokens, kinds, opts["working_memory"], opts["me"])
+    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix,
+             "Bash(python3 %sbin/paths.py:*)" % prefix]
+    if "Clippings" in kinds:
+        allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
+    # The nudge: on startup Claude Code runs due mode, which prints one line only when tend is due.
+    start_cmd = "python3 %s due --hook" % shlex.quote(prefix + "bin/paths.py")
+    merge_settings(seeder, settings_root, allow=allow, start_cmd=start_cmd)
+    if opts["plugins"]:
+        add_plugins(seeder, dest, opts["plugins"], tokens)
+    if opts["accent"]:
+        css = os.path.join(dest, ".obsidian", "snippets", "vault.css")
+        extra = accent_css(opts["accent"])
+        if css in seeder.wrote:
+            seeder.wrote[css] += extra.encode("utf-8")
+        if not seeder.dry and os.path.exists(css):
+            with open(css, encoding="utf-8") as fh:
+                there = extra in fh.read()
+            if not there:  # once: a rerun with the same accent leaves the snippet as it is
+                with open(css, "a", encoding="utf-8") as fh:
+                    fh.write(extra)
+    return allow, start_cmd
+
+
+# ------------------------------------------------------------ the manifest and upgrades
+
+
+def general_bases():
+    return set(os.listdir(os.path.join(ASSETS, "brain", "Templates", "Bases")))
+
+
+def seed_owned(rel, kinds):
+    """True for a file the seed owns, by its vault-relative path: the bin/ scripts and their docs, the
+    skills, the general Bases (not the one per kind), the CSS snippet, the bundled plugins (not a
+    plugin's data.json, which is its settings). Notes, root documents, templates, bin/vault.json,
+    .paths/ and settings are the owner's."""
+    parts = rel.split("/")
+    if parts[0] == "bin":
+        return len(parts) == 2 and rel not in ("bin/vault.json", MANIFEST)
+    if parts[:2] == [".claude", "skills"]:
+        return len(parts) > 3
+    if parts[:2] == ["Templates", "Bases"]:
+        return len(parts) == 3 and parts[2] in general_bases() and parts[2][:-len(".base")] not in kinds
+    if parts[:2] == [".obsidian", "plugins"]:
+        return len(parts) == 4 and parts[3] != "data.json"
+    return rel == ".obsidian/snippets/vault.css"
+
+
+def sha(data):
+    """A file's sha256, line endings made \\n first, so a Windows copy of the same file matches."""
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def seed_commit():
+    """This seed's git commit, or "unknown" when it is not a git checkout (a ZIP download)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        out = subprocess.run(["git", "-C", SKILL_DIR, "rev-parse", "--show-toplevel", "HEAD"],
+                             capture_output=True, text=True, timeout=10, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    lines = out.stdout.split()
+    if out.returncode or len(lines) != 2 or os.path.realpath(lines[0]) != os.path.realpath(SKILL_DIR):
+        return "unknown"
+    return lines[1]
+
+
+def manifest_text(commit, planted, opts, claude_md, files):
+    return json.dumps({
+        "about": "Written by Brain Garden's setup/build_vault.py. --upgrade reads it to tell the seed's "
+                 "files you never edited from the ones you did. Not for editing by hand.",
+        "seed": commit, "planted": planted, "options": opts, "claude_md": claude_md,
+        "files": dict(sorted(files.items())),
+    }, indent=2) + "\n"
+
+
+def manifest_for(seeder, dest, opts, planted, commit):
+    """The manifest for a vault just planted at dest: a hash of what the seed has for each file it
+    owns (not what is on disk, so a file kept from before is never mistaken for the seed's)."""
+    files = {}
+    for path, data in seeder.wrote.items():
+        rel = os.path.relpath(path, dest).replace(os.sep, "/")
+        if not rel.startswith("../") and seed_owned(rel, opts["kinds"]):
+            files[rel] = sha(data)
+    claude = sha(seeder.wrote.get(os.path.join(dest, "CLAUDE.md"), b""))
+    return manifest_text(commit, planted, opts, claude, files)
+
+
+def infer_options(dest):
+    """The options a vault with no manifest was planted with, read from its own files, and its date."""
+    def text(rel):
+        path = os.path.join(dest, rel)
+        if not os.path.exists(path):
+            return ""
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+
+    claude = text("CLAUDE.md")
+    flat = " ".join(claude.split())
+    name = claude.split("\n", 1)[0].lstrip("#").strip()
+    owner = re.search(r"not laws; (.+?) changes any of them", flat)
+    owner = owner.group(1) if owner else "the owner"
+    project = re.search(r"a second brain for (.+?)\. Kepano method", flat)
+    planted = (re.search(r"Planted (\d{4}-\d{2}-\d{2})", flat)
+               or re.search(r"^## (\d{4}-\d{2}-\d{2}) Planted from", text("Decisions.md"), re.M))
+    try:
+        kinds = list(json.loads(text(os.path.join("bin", "vault.json"))).get("kinds", {}))
+    except ValueError:
+        kinds = []
+    css = text(os.path.join(".obsidian", "snippets", "vault.css")).split("The vault's accent", 1)
+    hsl = re.search(r"--accent-h: (\d+);\s*--accent-s: (\d+)%;\s*--accent-l: (\d+)%;", css[1]) if len(css) > 1 else None
+    accent = None
+    if hsl:  # back to the #rrggbb that writes the same three numbers
+        hue, sat, light = (int(v) for v in hsl.groups())
+        rgb = colorsys.hls_to_rgb(hue / 360.0, light / 100.0, sat / 100.0)
+        accent = "#" + "".join("%02x" % int(round(c * 255)) for c in rgb)
+    opts = dict(
+        name=name, owner=owner, project=project.group(1) if project else owner, preset=None, kinds=kinds,
+        working_memory=os.path.exists(os.path.join(dest, "Now.md")),
+        me=os.path.exists(os.path.join(dest, "Me.md")),
+        plugins=[p for p in KNOWN_PLUGINS if os.path.isdir(os.path.join(dest, ".obsidian", "plugins", p))],
+        accent=accent)
+    return opts, planted.group(1) if planted else datetime.date.today().isoformat()
+
+
+def files_under(root):
+    """{vault-relative path with / separators: absolute path} for every file under root."""
+    out = {}
+    for here, dirs, names in os.walk(root):
+        dirs.sort()
+        for fn in sorted(names):
+            path = os.path.join(here, fn)
+            out[os.path.relpath(path, root).replace(os.sep, "/")] = path
+    return out
+
+
+def read_bytes(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def upgrade(dest, dry, commit):
+    """Bring the vault at dest up to this seed. See the module docstring for the rules."""
+    if not (os.path.isfile(os.path.join(dest, "CLAUDE.md")) and os.path.isfile(os.path.join(dest, "bin", "vault.json"))):
+        print("build: %s is not a planted vault (no CLAUDE.md or bin/vault.json); nothing to upgrade" % dest)
+        return 1
+    if os.path.exists(os.path.join(dest, ".bed.json")):
+        print("build: %s is a bed, not a brain: upgrade the brain it was sent from" % dest)
+        return 1
+    old = None
+    if os.path.exists(os.path.join(dest, MANIFEST)):
+        try:
+            old = json.loads(read_bytes(os.path.join(dest, MANIFEST)).decode("utf-8"))
+            opts, planted = old["options"], old["planted"]
+        except (ValueError, KeyError, TypeError):
+            print("build: %s is not a manifest this builder can read; reading the vault instead" % MANIFEST)
+            old = None
+    if old is None:
+        opts, planted = infer_options(dest)
+        print("build: no %s (the vault was planted before upgrades existed), so it was inferred from the vault:"
+              % MANIFEST)
+        print('      name "%s", owner "%s", project "%s", planted %s'
+              % (opts["name"], opts["owner"], opts["project"], planted))
+        print("      kinds %s; Now.md %s; Me.md %s; plugins %s; accent %s" % (
+            ", ".join(opts["kinds"]) or "none", "yes" if opts["working_memory"] else "no",
+            "yes" if opts["me"] else "no", ", ".join(opts["plugins"]) or "none", opts["accent"] or "none"))
+    recorded = (old or {}).get("files") or {}
+    claude_seen = (old or {}).get("claude_md")
+    tokens, repo_root = vault_tokens(opts, dest, planted)
+    seeder = Seeder(dry)
+    counts = dict(added=0, replaced=0, new=0)
+    news, retired, changed = [], [], False
+
+    def write(rel, data, mode_from=None):
+        if dry:
+            return
+        path = os.path.join(dest, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        if mode_from:
+            shutil.copymode(mode_from, path)
+
+    def offer(rel, data, src, known):
+        """The seed's version beside the owner's, as <file>.new, unless it is there already."""
+        path = os.path.join(dest, *(rel + ".new").split("/"))
+        if os.path.exists(path) and sha(read_bytes(path)) == sha(data):
+            return False
+        write(rel + ".new", data, src)
+        news.append(rel + ".new")
+        print("  ! %s.new  (%s)" % (rel, "edited here since planting; the seed's version is beside it" if known
+                                    else "differs from the seed's, with no record of what was planted"))
+        return True
+
+    with tempfile.TemporaryDirectory() as tmp:
+        fresh = os.path.join(tmp, os.path.basename(dest) or "vault")
+        with contextlib.redirect_stdout(io.StringIO()):
+            allow, start_cmd = plant(Seeder(False), fresh, opts, tokens, fresh)
+        shipped = files_under(fresh)
+        owned = {}
+        for rel, src in shipped.items():
+            if rel in (".claude/settings.json", ".gitignore", "bin/vault.json"):
+                continue  # merged below
+            data = read_bytes(src)
+            target = os.path.join(dest, *rel.split("/"))
+            is_owned = seed_owned(rel, opts["kinds"])
+            if is_owned:
+                owned[rel] = sha(data)
+            if not os.path.exists(target):
+                if os.path.basename(rel) == ".gitkeep" and os.path.isdir(os.path.dirname(target)):
+                    continue  # the folder is there, with or without its placeholder
+                write(rel, data, src)
+                counts["added"] += 1
+                print("  + %s" % rel)
+                continue
+            mine = sha(read_bytes(target))
+            if mine == sha(data):
+                continue
+            if rel == "CLAUDE.md":
+                if sha(data) != claude_seen and offer(rel, data, src, claude_seen is not None):
+                    counts["new"] += 1
+                continue
+            if not is_owned:
+                continue  # a root document, a template, a note: the owner's
+            if recorded.get(rel) == mine:
+                write(rel, data, src)
+                counts["replaced"] += 1
+                print("  ~ %s  (never edited here: replaced with the seed's current one)" % rel)
+            elif recorded.get(rel) != sha(data) and offer(rel, data, src, rel in recorded):
+                counts["new"] += 1
+
+        # bin/vault.json: new keys, and new budgets; never a value already there.
+        with open(shipped["bin/vault.json"], encoding="utf-8") as fh:
+            want = json.load(fh)
+        path = os.path.join(dest, "bin", "vault.json")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                have = json.load(fh)
+        except ValueError:
+            have = None
+            print("build: bin/vault.json is not valid JSON; leaving it alone. Its new keys: %s" % ", ".join(want))
+        if isinstance(have, dict):
+            added = []
+            for key, val in want.items():
+                if key not in have:
+                    have[key] = val
+                    added.append(key)
+                elif key == "budgets" and isinstance(have[key], dict):
+                    for name, size in val.items():
+                        if name not in have[key]:
+                            have[key][name] = size
+                            added.append("budgets: %s" % name)
+            if added:
+                write("bin/vault.json", (json.dumps(have, indent=2) + "\n").encode("utf-8"))
+                changed = True
+                print("  + bin/vault.json: %s" % ", ".join(added))
+
+        # .gitignore: the lines it lacks, each block with its comment; never a line already there.
+        with open(shipped[".gitignore"], encoding="utf-8") as fh:
+            want = fh.read()
+        path = os.path.join(dest, ".gitignore")
+        have = ""
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                have = fh.read()
+        there = {ln.strip() for ln in have.split("\n")}
+        blocks = []
+        for block in want.split("\n\n"):
+            lines = [ln for ln in block.split("\n") if ln.strip()]
+            missing = [ln for ln in lines if not ln.startswith("#") and ln.strip() not in there]
+            if missing:
+                blocks.append([ln for ln in lines if ln.startswith("#") and ln.strip() not in there] + missing)
+                print("  + .gitignore: %s" % ", ".join(missing))
+        if blocks:
+            text = have + ("\n" if have and not have.endswith("\n") else "") + ("\n" if have else "")
+            write(".gitignore", (text + "\n\n".join("\n".join(b) for b in blocks) + "\n").encode("utf-8"))
+            changed = True
+
+        fresh_claude = sha(read_bytes(shipped["CLAUDE.md"]))
+
+    # Settings: the same hooks and allow rules planting merges, by the same function.
+    if merge_settings(seeder, repo_root, allow=allow, start_cmd=start_cmd):
+        changed = True
+
+    gone = sorted(rel for rel in recorded if rel not in owned and os.path.exists(os.path.join(dest, *rel.split("/"))))
+    for old_skill, new_skill in sorted(RETIRED_SKILLS.items()):
+        folder = ".claude/skills/%s/" % old_skill
+        if os.path.isdir(os.path.join(dest, ".claude", "skills", old_skill)):
+            retired.append("%s: the seed ships .claude/skills/%s/ in its place" % (folder, new_skill))
+        gone = [rel for rel in gone if not rel.startswith(folder)]
+    retired += ["%s: the seed no longer ships it" % rel for rel in gone]
+    for line in retired:
+        print("  retired %s. Kept, never deleted: remove it once you are sure." % line)
+
+    new_manifest = manifest_text(commit, planted, opts, fresh_claude, owned)
+    if old is None or dict(old, seed=commit) != json.loads(new_manifest):
+        write(MANIFEST, new_manifest.encode("utf-8"))
+        changed = True
+        print("  ~ %s  (%s)" % (MANIFEST, "recorded" if old is None else "updated"))
+    changed = changed or any(counts.values())
+    if not changed:
+        print("build: nothing to upgrade: %s already has everything this seed ships" % dest)
+        return 0
+    if not dry:
+        finder = os.path.join(dest, "bin", "find.py")
+        if os.path.exists(finder):
+            subprocess.run([sys.executable, finder, "--rebuild"], cwd=dest, capture_output=True)
+    print("build: %s %d files, %s %d and %s %d .new to merge, vault at %s" % (
+        "would add" if dry else "added", counts["added"], "replace" if dry else "replaced", counts["replaced"],
+        "write" if dry else "wrote", counts["new"], dest))
+    if "CLAUDE.md.new" in news:
+        print("build: CLAUDE.md.new is the seed's CLAUDE.md for this vault. AI: go through what it changes with "
+              "the owner as a numbered list, merge what they approve into CLAUDE.md, then delete CLAUDE.md.new.")
+    if [n for n in news if n != "CLAUDE.md.new"]:
+        print("build: a .new beside a seed file is the seed's version of a file edited here. AI: for each, show "
+              "the owner what it changes as a numbered list, merge what they approve, then delete the .new.")
+        if old is None:
+            print("build: with no manifest, a .new may only be a newer seed version of a file nobody edited: "
+                  "when the owner never changed it (git log shows no edit since planting, or they say so), "
+                  "the .new replaces it whole.")
+    if dry:
+        print("build: --dry-run, nothing written")
+    else:
+        print("build: check it with: python3 %sbin/lint.py, then commit" % tokens["VAULT_PREFIX"])
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--preset", choices=sorted(PRESETS),
@@ -515,10 +894,19 @@ def main():
     ap.add_argument("--date", help="the date written into the vault (default: today)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--self-update", action="store_true")
+    ap.add_argument("--upgrade", action="store_true",
+                    help="bring the vault at --dest, planted earlier, up to this seed (--dry-run first)")
+    ap.add_argument("--seed-commit", help="what bin/seed-manifest.json records as the seed's commit "
+                                          "(default: this checkout's git HEAD; tools/build_starter.py says starter)")
     args = ap.parse_args()
 
     if args.self_update:
         return self_update()
+    if args.upgrade:
+        if not args.dest:
+            ap.error("--upgrade needs --dest, the vault to bring up to date")
+        return upgrade(os.path.abspath(os.path.expanduser(args.dest)), args.dry_run,
+                       args.seed_commit or seed_commit())
     if not args.name:
         ap.error("--name is required")
     if not args.preset and not args.kinds:
@@ -541,33 +929,17 @@ def main():
         ap.error("the vault folder would be %r. Obsidian lists a vault by its folder name, so give it "
                  "one that says whose it is, e.g. --dest %s (or pass --generic-dir-ok)."
                  % (vault_folder, os.path.join(os.path.dirname(dest), "%s-brain" % slug(owner))))
-    repo_root = git_root(dest) or dest
-    vault_path = os.path.relpath(dest, repo_root)
-    prefix = "" if vault_path == "." else vault_path.replace(os.sep, "/") + "/"
-    tokens = dict(
-        VAULT_NAME=args.name, PROJECT=args.project,
-        VAULT_PATH=("`%s`" % prefix if prefix else "the repo root" if git_root(dest)
-                    else "the top of this folder"), VAULT_PREFIX=prefix,
-        DATE=args.date or datetime.date.today().isoformat(), OWNER=owner, HOME_NOTE="Home",
-    )
-    kinds = [k.strip() for k in args.kinds.split(",") if k.strip()]
-    plugins = [p.strip() for p in args.plugins.split(",") if p.strip()]
+    # Everything needed to plant this vault again, recorded in its manifest for --upgrade.
+    opts = dict(name=args.name, owner=owner, project=args.project, preset=args.preset,
+                kinds=[k.strip() for k in args.kinds.split(",") if k.strip()],
+                working_memory=bool(args.working_memory), me=bool(args.me),
+                plugins=[p.strip() for p in args.plugins.split(",") if p.strip()], accent=args.accent)
+    tokens, repo_root = vault_tokens(opts, dest, args.date or datetime.date.today().isoformat())
+    prefix = tokens["VAULT_PREFIX"]
     seeder = Seeder(args.dry_run)
-
-    seed_brain(seeder, dest, tokens, kinds, args.working_memory, args.me)
-    allow = ["Bash(python3 %sbin/lint.py:*)" % prefix, "Bash(python3 %sbin/find.py:*)" % prefix,
-             "Bash(python3 %sbin/paths.py:*)" % prefix]
-    if "Clippings" in kinds:
-        allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
-    # The nudge: on startup Claude Code runs due mode, which prints one line only when tend is due.
-    merge_settings(seeder, repo_root, allow=allow, start_cmd="python3 %s due --hook" % shlex.quote(prefix + "bin/paths.py"))
-    if plugins:
-        add_plugins(seeder, dest, plugins, tokens)
-    if args.accent:
-        css = os.path.join(dest, ".obsidian", "snippets", "vault.css")
-        if not seeder.dry and os.path.exists(css):
-            with open(css, "a", encoding="utf-8") as fh:
-                fh.write(accent_css(args.accent))
+    plant(seeder, dest, opts, tokens, repo_root)
+    seeder.write(os.path.join(dest, *MANIFEST.split("/")),
+                 manifest_for(seeder, dest, opts, tokens["DATE"], args.seed_commit or seed_commit()))
 
     verb = "would create" if args.dry_run else "created"
     for path in seeder.made:
