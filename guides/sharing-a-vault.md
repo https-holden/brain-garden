@@ -91,6 +91,9 @@ your links put back. It reports, and never applies:
   --force` to put it back.
 - a **rename**: rename the note in your brain the same way, then push.
 - a **new note**: copy it into your brain if you want it.
+- anything that would change **which beds a note goes to** (a `beds` property added in the
+  bed, or a topic that is not one of the bed's): held back, so nobody in one bed can send your
+  notes to another. Add it in your brain yourself if it belongs.
 
 Pull never deletes a note in your brain.
 
