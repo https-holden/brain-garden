@@ -56,7 +56,7 @@ DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
 DASHES = ("–", "—")
 # The one place the over-budget warning is worded.
-OVER_BUDGET = "{file}: {size:,} chars, over its budget of {budget:,}: have the AI compact it to about {target:,} (75%)"
+OVER_BUDGET = "{file}: {size:,} chars, over its budget of {budget:,}: say tend to compact it to about {target:,} (75%)"
 
 errors, warnings = [], []
 

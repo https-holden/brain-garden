@@ -267,8 +267,9 @@ def self_update():
     return 0
 
 
-def merge_settings(seeder, repo_root, stop_cmd=None, allow=()):
-    """Add a Stop hook and/or permission rules to .claude/settings.json without disturbing the rest."""
+def merge_settings(seeder, repo_root, stop_cmd=None, allow=(), start_cmd=None):
+    """Add a Stop hook, a SessionStart hook and/or permission rules to .claude/settings.json without
+    disturbing the rest. Each is added once: a rebuild finds it there and leaves it."""
     path = os.path.join(repo_root, ".claude", "settings.json")
     data = {}
     if os.path.exists(path):
@@ -277,7 +278,10 @@ def merge_settings(seeder, repo_root, stop_cmd=None, allow=()):
                 data = json.load(fh)
         except ValueError:
             print("build: %s is not valid JSON; leaving it alone. Add this by hand:" % path)
-            print("      Stop hook: %s" % stop_cmd)
+            if stop_cmd:
+                print("      Stop hook: %s" % stop_cmd)
+            if start_cmd:
+                print("      SessionStart hook (matcher startup): %s" % start_cmd)
             return
     before = json.dumps(data, sort_keys=True)
     if stop_cmd:
@@ -285,6 +289,10 @@ def merge_settings(seeder, repo_root, stop_cmd=None, allow=()):
         if "session_check.py" not in json.dumps(stops):
             stops.append({"hooks": [{"type": "command", "command": stop_cmd, "timeout": 30,
                                      "statusMessage": "Checking the vault write-back"}]})
+    if start_cmd:
+        starts = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+        if start_cmd not in json.dumps(starts):
+            starts.append({"matcher": "startup", "hooks": [{"type": "command", "command": start_cmd}]})
     if allow:
         rules = data.setdefault("permissions", {}).setdefault("allow", [])
         for rule in allow:
@@ -549,7 +557,8 @@ def main():
              "Bash(python3 %sbin/paths.py:*)" % prefix]
     if "Clippings" in kinds:
         allow += ["Bash(python3 %sbin/ingest.py:*)" % prefix]
-    merge_settings(seeder, repo_root, allow=allow)
+    # The nudge: on startup Claude Code runs due mode, which prints one line only when tend is due.
+    merge_settings(seeder, repo_root, allow=allow, start_cmd="python3 %sbin/paths.py due" % prefix)
     if plugins:
         add_plugins(seeder, dest, plugins, tokens)
     if args.accent:

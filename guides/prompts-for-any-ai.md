@@ -34,10 +34,10 @@ again now and then, as the vault grows). Then you can skip pasting them every ti
 >
 > (paste CLAUDE.md and Rules.md, then the text)
 
-## Finding your sources, and pruning
+## Finding your sources, and tending
 
-The harvesting interview and the monthly pruning prompt are in
-[harvesting-and-pruning.md](harvesting-and-pruning.md#prompts).
+The harvesting interview and the monthly tending prompt are in
+[harvesting-and-tending.md](harvesting-and-tending.md#prompts).
 
 ## Filing imported notes
 

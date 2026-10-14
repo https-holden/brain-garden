@@ -2,13 +2,33 @@
 """Footsteps: where the AI walks in this vault, as a ledger and a one-screen report. Standard library only.
 
     python3 bin/paths.py                     refresh the ledger and the report (mode `refresh`)
+    python3 bin/paths.py --pass              refresh, record today as the last pass of `tend`,
+                                             and save the report as .paths/reports/YYYY-MM-DD.md
+    python3 bin/paths.py --paved NOTE        refresh, and record NOTE (a vault-relative path,
+                                             repeatable) as paved today
+    python3 bin/paths.py due                 the nudge: one line when `tend` is due, else nothing
     python3 bin/paths.py --today YYYY-MM-DD  as if today were that date
     python3 bin/paths.py --transcripts DIR   also read the Claude Code transcripts in DIR (repeatable)
 
-It writes two files and nothing else, both kept on this machine (git-ignored):
-.paths/ledger.json, every footstep so far, and .paths/report.md, the report.
-It never creates, edits or moves a note and writes no frontmatter. In a bed
-checkout (.bed.json at the vault root) it prints nothing and exits.
+A refresh writes two files and nothing else, both kept on this machine
+(git-ignored): .paths/ledger.json, every footstep so far, and .paths/report.md,
+the report. A pass also saves the report as .paths/reports/YYYY-MM-DD.md, which
+git tracks, so month-over-month change is a diff. It never creates, edits or
+moves a note and writes no frontmatter. In a bed checkout (.bed.json at the
+vault root) it prints nothing and exits, whatever the mode.
+
+`due` reads only the ledger and file sizes and writes nothing. Its one line
+names every reason that applies: the last refresh is more than 7 days old; the
+last pass is more than 30 days old, or there has been none and the first
+refresh is more than 30 days old; a file a session loads without asking is
+over its budget in bin/vault.json (the rule lint warns on). With no ledger,
+only the budget reason applies. The Claude Code SessionStart hook and the
+`start-of-day` skill run it.
+
+A paved note (Pave in `tend`: checked, shortened, linked from its topic's
+"Start here") is never again listed under drafts wanting paving. It is listed
+under "Paved, waiting for your verify" from the day after the pave until the
+first pass on a later day, which marks it asked, so the owner is asked once.
 
 A footstep is one read, write or lookup hit of a vault file. The sources, each
 optional, are named at the top of the report:
@@ -69,7 +89,9 @@ import find  # noqa: E402
 VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEDGER = os.path.join(".paths", "ledger.json")
 REPORT = os.path.join(".paths", "report.md")
-HOT_DAYS, HOT_READS, DORMANT_DAYS, TOP_HOT, TOP_LIST = 30, 3, 60, 20, 10
+REPORTS = os.path.join(".paths", "reports")  # one dated copy per pass, committed
+HOT_DAYS, HOT_READS, DORMANT_DAYS, TOP_HOT, TOP_LIST, TOP_TYPES = 30, 3, 60, 20, 10, 8
+REFRESH_DAYS, PASS_DAYS = 7, 30  # due mode: older than this, tending is due
 READS = ("read", "find")  # the kinds that make a file hot; write and git never do
 # Claude Code's own slash commands (and their aliases) never type a session; any other one does, by
 # name. Only the common ones: a rarer built-in at the start of a session just names its type.
@@ -545,19 +567,35 @@ def refresh(root, today, extra):
 
     ledger = {
         "version": 1, "refreshed": today.isoformat(), "last_pass": old.get("last_pass"),
-        "paved": old.get("paved") if isinstance(old.get("paved"), dict) else {},
+        "first_refresh": old.get("first_refresh") or old.get("refreshed") or today.isoformat(),
+        "paved": paved_of(old),
         "sources": {"transcripts": found, "sessions": len(sessions),
                     "find_log": None if lookups is None else len(lookups),
                     "git": None if commits is None else len(commits)},
         "transcripts": known, "sessions": sessions, "paths": steps, "types": types,
         "signposts": {q: m for q, m in misses.items() if m["misses"] >= 2},
     }
+    save(root, ledger)
+    return ledger, opened, len(files) - len([p for p in files if p in fresh])
+
+
+def save(root, ledger):
     os.makedirs(os.path.join(root, ".paths"), exist_ok=True)
     with open(os.path.join(root, LEDGER + ".tmp"), "w", encoding="utf-8", newline="\n") as fh:
         json.dump(ledger, fh, indent=1, sort_keys=True, ensure_ascii=False)
         fh.write("\n")
     os.replace(os.path.join(root, LEDGER + ".tmp"), os.path.join(root, LEDGER))
-    return ledger, opened, len(files) - len([p for p in files if p in fresh])
+
+
+def paved_of(ledger):
+    """{note: {"paved": day, "asked": day or None}} from a ledger, whatever shape an older one kept it in."""
+    raw = ledger.get("paved") if isinstance(ledger.get("paved"), dict) else {}
+    out = {}
+    for rel, v in raw.items():
+        v = {"paved": v} if isinstance(v, str) else v if isinstance(v, dict) else {}
+        if isinstance(v.get("paved"), str):
+            out[rel] = {"paved": v["paved"], "asked": v.get("asked") if isinstance(v.get("asked"), str) else None}
+    return out
 
 
 # ------------------------------------------------------------ report
@@ -626,8 +664,9 @@ def report(root, ledger, today):
     if src.get("git") is not None:
         named.append("git log (%s)" % plural(src["git"], "commit"))
     lines = ["# Paths report", "",
-             "Refreshed %s. Last pass: %s. Window: %d days (dormant: %d)."
-             % (ledger["refreshed"], ledger.get("last_pass") or "never", HOT_DAYS, DORMANT_DAYS),
+             "Refreshed %s. Ledger started %s. Last pass: %s. Window: %d days (dormant: %d)."
+             % (ledger["refreshed"], ledger["first_refresh"], ledger.get("last_pass") or "never", HOT_DAYS,
+                DORMANT_DAYS),
              "Sources: %s." % ("; ".join(named) or "none")]
     if not has_reads:
         lines.append("Reads not measured: no Claude Code session and no find query yet on this machine.")
@@ -662,7 +701,10 @@ def report(root, ledger, today):
         if types:
             lines += ["| Type | Sessions | Average fixed load |", "|---|---|---|"]
             lines += ["| %s | %d | %s |" % (t, v["sessions"], "{:,} chars".format(v["fixed_load"])
-                                            if v["fixed_load"] is not None else "no useful action") for t, v in types]
+                                            if v["fixed_load"] is not None else "no useful action")
+                      for t, v in types[:TOP_TYPES]]
+            if len(types) > TOP_TYPES:
+                lines.append("And %d more types." % (len(types) - TOP_TYPES))
         else:
             lines.append("No Claude Code session in %d days." % HOT_DAYS)
         folders = {}
@@ -701,8 +743,11 @@ def report(root, ledger, today):
         lines += ["", "## Drafts wanting paving: hot, `status: draft`",
                   "%d hot draft%s." % (len(drafts), "" if len(drafts) == 1 else "s")]
         lines += ["- %s: %d reads" % (rel, recent(rel, READS)) for rel in drafts[:TOP_LIST]]
+    waiting = waiting_verify(root, ledger, today)
     lines += ["", "## Paved, waiting for your verify"]
-    lines += ["- %s (paved %s)" % (rel, day) for rel, day in sorted(ledger["paved"].items())] or ["None yet."]
+    lines += ["- %s (paved %s)" % (rel, day) for rel, day in waiting[:TOP_LIST]] or ["None yet."]
+    if len(waiting) > TOP_LIST:
+        lines.append("And %d more." % (len(waiting) - TOP_LIST))
     if has_reads:
         lines += ["", "## Signposts: missed twice or more in %d days" % HOT_DAYS]
         signs = sorted(ledger["signposts"].items(), key=lambda kv: (-kv[1]["misses"], kv[0]))
@@ -711,12 +756,89 @@ def report(root, ledger, today):
     return "\n".join(lines) + "\n"
 
 
+def waiting_verify(root, ledger, today):
+    """[(note, day paved)]: paved before today, not asked in a pass yet, and still a draft."""
+    out = []
+    for rel, p in sorted(ledger["paved"].items(), key=lambda kv: (kv[1]["paved"], kv[0])):
+        path = os.path.join(root, *rel.split("/"))
+        if p["asked"] or p["paved"] >= today.isoformat() or not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            if find.plain(find.frontmatter(fh.read()).get("status", "")) == "draft":
+                out.append((rel, p["paved"]))
+    return out
+
+
+# ------------------------------------------------------------ due
+
+
+def age(day, today):
+    """Whole days from an ISO date to today, or None when it is not one."""
+    try:
+        return (today - dt.date.fromisoformat(day)).days
+    except (TypeError, ValueError):
+        return None
+
+
+def over_budget(root):
+    """[(file, chars, budget)] for each file over its budget in bin/vault.json, by lint's rule."""
+    try:
+        with open(os.path.join(root, "bin", "vault.json"), encoding="utf-8") as fh:
+            raw = json.load(fh).get("budgets") or {}
+    except (OSError, ValueError, AttributeError):
+        raw = {}
+    table = {}
+    for rel, n in raw.items() if isinstance(raw, dict) else []:
+        try:
+            table[os.path.normpath(rel.replace("\\", "/")).replace(os.sep, "/")] = int(n)
+        except (TypeError, ValueError):
+            pass
+    limits = {rel: n for rel, n in table.items() if rel != "SKILL.md"}
+    skills = os.path.join(root, ".claude", "skills")
+    if "SKILL.md" in table and os.path.isdir(skills):
+        for name in sorted(os.listdir(skills)):
+            limits.setdefault(".claude/skills/%s/SKILL.md" % name, table["SKILL.md"])
+    out = []
+    for rel, budget in sorted(limits.items()):
+        path = os.path.join(root, *rel.split("/"))
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                size = len(fh.read())
+            if size > budget:
+                out.append((rel, size, budget))
+    return out
+
+
+def due(root, today):
+    """The nudge: one line naming every reason `tend` is due, or "" when none is. Reads, never writes."""
+    ledger, reasons = load(root), []
+    refreshed = age(ledger.get("refreshed"), today)
+    if refreshed is not None:  # with no ledger, only the budgets speak
+        if refreshed > REFRESH_DAYS:
+            reasons.append("the paths report is %d days old" % refreshed)
+        last, first = age(ledger.get("last_pass"), today), age(ledger.get("first_refresh"), today)
+        first = refreshed if first is None else first
+        if last is not None and last > PASS_DAYS:
+            reasons.append("the last pass was %d days ago" % last)
+        elif last is None and first > PASS_DAYS:
+            reasons.append("no pass yet, %d days after the first refresh" % first)
+    over = ["{} ({:,} of {:,} chars)".format(rel, n, b) for rel, n, b in over_budget(root)]
+    if over:
+        reasons.append("over budget: " + ", ".join(over))
+    return 'Tend is due: %s. Say "tend" to start it.' % "; ".join(reasons) if reasons else ""
+
+
 def main():
     if os.path.exists(os.path.join(VAULT, ".bed.json")):
-        return 0  # a bed keeps no ledger: its footsteps are walked in the brain
+        return 0  # a bed keeps no ledger and needs no tending: its footsteps are walked in the brain
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", nargs="?", default="refresh", choices=["refresh"],
-                    help="refresh (the default): update .paths/ledger.json and .paths/report.md")
+    ap.add_argument("mode", nargs="?", default="refresh", choices=["refresh", "due"],
+                    help="refresh (the default): update .paths/ledger.json and .paths/report.md; "
+                         "due: print one line when tend is due, else nothing")
+    ap.add_argument("--pass", dest="pass_", action="store_true",
+                    help="refresh, record today as the last pass, save the report in .paths/reports/")
+    ap.add_argument("--paved", action="append", default=[], metavar="NOTE",
+                    help="refresh, and record this note (vault-relative path) as paved today; repeatable")
     ap.add_argument("--today", help="YYYY-MM-DD to count from instead of today (for tests)")
     ap.add_argument("--transcripts", action="append", default=[], metavar="DIR",
                     help="a folder of Claude Code transcripts (.jsonl) of this vault to read as well")
@@ -725,10 +847,39 @@ def main():
         today = dt.date.fromisoformat(args.today) if args.today else dt.date.today()
     except ValueError:
         ap.error("--today takes YYYY-MM-DD")
+    if args.mode == "due":
+        if args.pass_ or args.paved:
+            ap.error("--pass and --paved go with a refresh, not with due")
+        line = due(VAULT, today)
+        if line:
+            print(line)
+        return 0
+    vault, paved = Vault(VAULT), []
+    for note in args.paved:
+        rel = vault.rel(note, VAULT)
+        if not rel or not rel.endswith(".md") or vault.kind(rel) != "file":
+            ap.error("--paved %s: no such note in this vault (give its path from the vault root)" % note)
+        paved.append(rel)
     ledger, opened, unchanged = refresh(VAULT, today, [os.path.abspath(d) for d in args.transcripts])
+    for rel in paved:
+        ledger["paved"][rel] = {"paved": today.isoformat(), "asked": None}
+    if args.pass_:
+        ledger["last_pass"] = today.isoformat()
+    text = report(VAULT, ledger, today)
     with open(os.path.join(VAULT, REPORT), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(report(VAULT, ledger, today))
-    print("paths: %d transcripts read, %d unchanged; the report is .paths/report.md" % (opened, unchanged))
+        fh.write(text)
+    saved = ""
+    if args.pass_:
+        os.makedirs(os.path.join(VAULT, REPORTS), exist_ok=True)
+        with open(os.path.join(VAULT, REPORTS, today.isoformat() + ".md"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        saved = ", saved as .paths/reports/%s.md" % today.isoformat()
+        for rel, _ in waiting_verify(VAULT, ledger, today):
+            ledger["paved"][rel]["asked"] = today.isoformat()
+    if paved or args.pass_:
+        save(VAULT, ledger)
+    print("paths: %d transcripts read, %d unchanged; the report is .paths/report.md%s%s"
+          % (opened, unchanged, saved, "; %d paved" % len(paved) if paved else ""))
     return 0
 
 

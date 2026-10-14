@@ -7,7 +7,7 @@ description: Work out with the owner where their material lives and how to bring
 
 A second brain fails in one of two ways: nothing goes in, or everything goes in and none of it
 is ever used. This skill steers between them. The full reasoning, for the owner, is in
-`guides/harvesting-and-pruning.md` of https://github.com/https-holden/brain-garden; this is the procedure.
+`guides/harvesting-and-tending.md` of https://github.com/https-holden/brain-garden; this is the procedure.
 
 Read `Me.md` and `Sources.md` first. If `Me.md` still says what the vault is for only as
 `(fill in: ...)`, ask that first, in one question: every later choice depends on it.

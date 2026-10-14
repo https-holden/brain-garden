@@ -100,5 +100,5 @@ open. A good first week: your last few journal entries (`--mine`), five articles
 keep, and one export from the app you used before.
 
 Not sure where to start, or worried about importing too much? See
-[harvesting-and-pruning.md](harvesting-and-pruning.md): an interview to find your sources, the
-sample-first rule, `Sources.md`, and the monthly prune.
+[harvesting-and-tending.md](harvesting-and-tending.md): an interview to find your sources, the
+sample-first rule, `Sources.md`, and the monthly tend.
