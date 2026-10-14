@@ -66,7 +66,9 @@ Set `rewritten:` in its frontmatter to today if it has that property.
 
 ## 5. Check
 
-Run `python3 bin/lint.py`; fix every error, mention the warnings.
+Run `python3 bin/lint.py`; fix every error, mention the warnings. Then refresh the footsteps
+quietly with `python3 bin/paths.py`: it writes only `.paths/ledger.json` and `.paths/report.md`,
+so say nothing about it unless it fails.
 
 ## 6. Improve the process
 
