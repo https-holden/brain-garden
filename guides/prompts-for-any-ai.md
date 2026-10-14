@@ -5,8 +5,8 @@ just ask. A chat AI in a browser (ChatGPT, Gemini, claude.ai) cannot see your fi
 paste them in and paste its answer back. These prompts make that quick. Copy everything inside
 a box.
 
-Tip: in ChatGPT, make a **Project** called "Second brain" and put your vault's `CLAUDE.md` and
-`Me.md` in its files. Add the index of your notes too, so the chat knows what notes exist: run
+Tip: in ChatGPT, make a **Project** called "Second brain" and put your vault's `CLAUDE.md`,
+`Rules.md` and `Me.md` in its files. Add the index of your notes too, so the chat knows what notes exist: run
 `python3 bin/find.py --all > ~/Desktop/index.txt` in your vault and upload `index.txt` (do it
 again now and then, as the vault grows). Then you can skip pasting them every time.
 
@@ -27,12 +27,12 @@ again now and then, as the vault grows). Then you can skip pasting them every ti
 
 ## Turning something into notes
 
-> Here are my vault's rules (CLAUDE.md), then something I want to keep. Turn it into notes
+> Here are my vault's rules (CLAUDE.md and Rules.md), then something I want to keep. Turn it into notes
 > that follow the rules exactly: the right folder, the frontmatter its kind's template has,
 > `categories` as links to topics, a title that says the idea, `[[links]]` to people and
 > things, no en or em dashes. Give each note as its file path and its full content.
 >
-> (paste CLAUDE.md, then the text)
+> (paste CLAUDE.md and Rules.md, then the text)
 
 ## Finding your sources, and pruning
 

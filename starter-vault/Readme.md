@@ -1,7 +1,9 @@
 # My Second Brain
 
-The human guide. `CLAUDE.md` holds the operating rules a model follows, `Decisions.md` is the
-dated log of why the rules are what they are.
+The human guide. `CLAUDE.md` is what your AI reads first in every session: how it works here
+and how it looks things up. `Rules.md` is the detail it reads before changing anything: where
+each kind of note goes, what it carries, the conventions. `Decisions.md` is the dated log of
+why the rules are what they are.
 
 ## Opening it
 
@@ -33,7 +35,8 @@ One folder per kind of note. New notes land in `Notes/`. To make one, create the
 status have every word, one line each. Your AI starts every lookup with it. It reads an index
 of your notes, `.paths/index.txt`, which keeps itself current and is committed, so its history
 shows what the vault knows. Using ChatGPT? `python3 bin/find.py --all` prints
-the whole index: save it as a file in your ChatGPT project, beside `CLAUDE.md` and `Me.md`.
+the whole index: save it as a file in your ChatGPT project, beside `CLAUDE.md`, `Rules.md`
+and `Me.md`.
 
 ## Every day
 
@@ -73,4 +76,6 @@ Anything someone else wrote (articles, PDFs, recipes, emails, screenshots) goes 
 ## Keeping it honest
 
 `python3 bin/lint.py` checks the vault against its own templates and rules.
-Errors block a commit; warnings are worth a look.
+Errors block a commit; warnings are worth a look. One warning is about size: the files your AI
+reads every session (`CLAUDE.md`, `Me.md`, `Now.md`, each skill) each have a budget in
+`bin/vault.json`, and when one grows past it, ask your AI to compact it.

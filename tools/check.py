@@ -6,7 +6,8 @@
 Builds both presets and a custom vault into a temporary folder, runs each
 vault's own check, pushes sample files through bin/ingest.py, round-trips a
 fake chat answer through bin/librarian.py --apply, checks the daily loop's
-reply cards and action log, installs every bundled plugin, checks
+reply cards and action log, checks the CLAUDE.md and Rules.md split and the
+size budgets lint warns on, installs every bundled plugin, checks
 starter-vault/ is what the seed makes today, scans this repo's own docs
 for en and em dashes, and fails when a tracked file names a term from the
 git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
@@ -104,7 +105,9 @@ def ingest_round_trip(vault, fx):
     with open(os.path.join(vault, "Clippings", "A book.md"), "a", encoding="utf-8") as fh:
         fh.write("- the owner's own line\n")
     code, out = run([PY, os.path.join(vault, "bin", "librarian.py"), "--paste"], cwd=vault)
-    check("librarian: --paste prints the job", code == 0 and "=== FILE: Clippings/A book.md" in out, out[-500:])
+    check("librarian: --paste prints the job, with CLAUDE.md and Rules.md", code == 0
+          and "=== FILE: Clippings/A book.md" in out and "## The vault's rules (Rules.md)\n\n# Rules" in out
+          and "## The vault's rules (CLAUDE.md)" in out, out[-500:])
     answer = os.path.join(fx, "answer.txt")
     mine = [p for p in os.listdir(os.path.join(vault, "Notes")) if p.endswith(".md")][0]
     with open(answer, "w", encoding="utf-8") as fh:
@@ -468,8 +471,9 @@ def find_tool(tmp):
     check("CLAUDE.md: the one recipe starts with the find tool",
           re.search(r"## Looking things up: the one recipe\n.*?\n1\. `python3 bin/find\.py ", rules, re.S)
           is not None, rules[:4000])
-    check("CLAUDE.md: the vault map has .paths/ and find.py --all",
-          "| `.paths/` |" in rules and "find.py --all" in rules, rules)
+    detail = read(os.path.join(vault, "Rules.md"))
+    check("Rules.md: the vault map has .paths/ and find.py --all",
+          "| `.paths/` |" in detail and "find.py --all" in detail, detail)
     check("Readme.md: mentions the index and find.py --all",
           "find.py --all" in read(os.path.join(vault, "Readme.md")))
     check("the chat-AI guide puts find.py --all in a ChatGPT project",
@@ -526,6 +530,101 @@ def recipe_guard():
     missing = [p for p in pointers if "the one recipe in `CLAUDE.md`"
                not in read(os.path.join(ROOT, "template", "optional", p))]
     check("skills that look notes up point at the one recipe in CLAUDE.md", not missing, ", ".join(missing))
+
+
+def budgets(tmp):
+    """CLAUDE.md is the index and Rules.md the detail; every file the AI loads without asking has a
+    budget in bin/vault.json, a fresh vault is well under each, and lint warns (never errors) when one is over."""
+    want = {"CLAUDE.md": 9000, "Rules.md": 20000, "Me.md": 5000, "Now.md": 12000, "SKILL.md": 12000}
+    detail = ["## Vault map", "## Kinds in use", "## Adding a kind", "## Keeping the documentation honest",
+              "## Conventions", "## Bringing things in", "## The daily loop", "| `Me.md` |", "| `Now.md` |",
+              "| `People/` |", "| People | Person Template |", "`ingest.py` (bring things in)"]
+    index = ["## Looking things up: the one recipe", "`Me.md` is who the owner is", "Three memory tiers",
+             "`## Actions` in today's `Daily/"]
+    for preset in ("personal", "work"):
+        name = "budget-%s" % preset
+        code, out = seed(tmp, "--preset", preset, "--dest", name, "--name", "Budget Brain", "--owner", "Sam",
+                         "--date", "2026-10-14")
+        check("build %s" % name, code == 0, out)
+        vault = os.path.join(tmp, name)
+        claude, rules = read(os.path.join(vault, "CLAUDE.md")), read(os.path.join(vault, "Rules.md"))
+        check("%s: CLAUDE.md at or below 6,750 chars (%d), Rules.md at or below 15,000 (%d)"
+              % (preset, len(claude), len(rules)), rules != "" and len(claude) <= 6750 and len(rules) <= 15000)
+        table = json.load(open(os.path.join(vault, "bin", "vault.json"), encoding="utf-8")).get("budgets")
+        sizes = {rel: len(read(os.path.join(vault, rel))) for rel in want if rel != "SKILL.md"}
+        skills = os.path.join(vault, ".claude", "skills")
+        sizes.update({".claude/skills/%s/SKILL.md" % s: len(read(os.path.join(skills, s, "SKILL.md")))
+                      for s in os.listdir(skills)})
+        over = ["%s %d of %d" % (rel, n, (table or want).get(rel, want["SKILL.md"])) for rel, n in sorted(sizes.items())
+                if n > 0.75 * (table or want).get(rel, want["SKILL.md"])]
+        check("%s: bin/vault.json has the budgets, every budgeted file at or below 75%% of its budget" % preset,
+              table == want and len(sizes) > 8 and not over, "%s\n%s" % (table, "\n".join(over)))
+        misplaced = ([d for d in detail if d not in rules or d in claude]
+                     + [i for i in index if i not in claude or i in rules])
+        check("%s: each filled token lands in the file its text lives in" % preset, not misplaced, str(misplaced))
+        flat = " ".join(claude.split())
+        check("%s: CLAUDE.md says read Rules.md before writing a note, touching a template, a Base or a skill, "
+              "and before a first commit, and points at each section spliced into it" % preset,
+              "`Rules.md` before you write or restructure a note, touch a template, a Base or a skill, and "
+              "before a first commit" in flat and '"Bringing things in" in `Rules.md`' in flat
+              and '"The daily loop" in `Rules.md`' in flat, claude[:2500])
+        twice = sorted({ln.strip() for ln in claude.split("\n") if len(ln.strip()) >= 30}
+                       & {ln.strip() for ln in rules.split("\n")})
+        check("%s: nothing in Rules.md is repeated in CLAUDE.md" % preset, not twice, "\n".join(twice))
+        check("%s: Rules.md says it is binding like CLAUDE.md" % preset, "binding like `CLAUDE.md`" in rules, rules[:600])
+        code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+        check("%s: lint on a fresh vault prints no budget warning" % preset, code == 0 and "budget" not in out, out)
+
+    vault = os.path.join(tmp, "budget-personal")
+    check("Decisions.md: every auto-loaded file is an index, dated with the planting date",
+          "## 2026-10-14 Every auto-loaded file is an index, never the detail" in read(os.path.join(vault, "Decisions.md")))
+    now_path = os.path.join(vault, "Now.md")
+    fresh = read(now_path)
+    with open(now_path, "a", encoding="utf-8") as fh:
+        fh.write("- Should the garden grow a page for every question I keep asking myself?\n" * 170)
+    size = len(read(now_path))
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    warned = [ln for ln in out.split("\n") if ln.startswith("warn")]
+    check("lint: Now.md over 12,000 chars gives one warning with its size, its budget and the compact "
+          "suggestion, and exits 0",
+          size > 12000 and code == 0 and len(warned) == 1 and "Now.md" in warned[0]
+          and "{:,}".format(size) in warned[0] and "12,000" in warned[0] and "compact" in warned[0]
+          and "9,000" in warned[0], out)
+    with open(now_path, "w", encoding="utf-8") as fh:
+        fh.write(fresh)
+
+    config_path = os.path.join(vault, "bin", "vault.json")
+    config = json.load(open(config_path, encoding="utf-8"))
+    config.setdefault("budgets", {}).update({".claude/skills/start-of-day/SKILL.md": 30000,
+                              ".claude/skills/run-brief/SKILL.md": 1000, ".claude/skills/gone/SKILL.md": 10})
+    with open(config_path, "w", encoding="utf-8") as fh:
+        json.dump(config, fh, indent=2)
+    for skill in ("start-of-day", "end-of-day"):
+        with open(os.path.join(vault, ".claude", "skills", skill, "SKILL.md"), "a", encoding="utf-8") as fh:
+            fh.write("\nA long aside that makes this skill too big to load every time it is used.\n" * 160)
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    named = sorted(re.findall(r"^warn\s+(\S+): .*budget", out, re.M))
+    check("lint: a budget set for one skill in bin/vault.json wins for that skill only; a missing file is skipped",
+          code == 0 and named == [".claude/skills/end-of-day/SKILL.md", ".claude/skills/run-brief/SKILL.md"], out)
+
+    docs = {"AGENTS.md": "`Rules.md`", os.path.join("guides", "prompts-for-any-ai.md"): "`CLAUDE.md`, `Rules.md` and `Me.md`"}
+    missing = [p for p, s in docs.items() if s not in " ".join(read(os.path.join(ROOT, p)).split())]
+    missing += ["Readme.md (planted)"] if "`Rules.md`" not in read(os.path.join(vault, "Readme.md")) else []
+    check("AGENTS.md, the chat-AI guide and the vault's Readme.md name Rules.md", not missing, ", ".join(missing))
+    stale = []
+    for root, _, files in os.walk(os.path.join(ROOT, "template")):
+        for fn in sorted(files):
+            if fn.endswith((".md", ".py")) and fn != "Rules.md":
+                stale += ["%s: %s" % (os.path.relpath(os.path.join(root, fn), ROOT), s)
+                          for s in sends_to_claude_md(read(os.path.join(root, fn)))]
+    check("no template file sends the AI to CLAUDE.md for the detail that moved to Rules.md", not stale, "\n".join(stale))
+
+
+def sends_to_claude_md(text):
+    """Sentences that name CLAUDE.md, not Rules.md, for the vault map, the kinds, adding a kind or the conventions."""
+    return [s for s in re.split(r"(?<=[.;])\s+", " ".join(text.split()))
+            if "CLAUDE.md" in s and "Rules.md" not in s
+            and re.search(r"kinds table|vault map|convention|adding a kind|mechanics", s, re.I)]
 
 
 def plugins(tmp):
@@ -639,6 +738,7 @@ def main():
         daily_loop(tmp)
         find_tool(tmp)
         vault_import(tmp)
+        budgets(tmp)
         plugins(tmp)
     recipe_guard()
 

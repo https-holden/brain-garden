@@ -25,7 +25,7 @@ If today's daily note does not exist and nothing else happened, say so and stop.
 ## 2. Find what was learned
 
 A learning is one of these, and it names the folder it would go in (see the kinds table in
-`CLAUDE.md`):
+`Rules.md`):
 
 - **A claim or idea** worth keeping: how something works, a decision and its reason, an insight.
   Titled as the claim, `status: draft` if the kind has a status.
@@ -73,9 +73,9 @@ Run `python3 bin/lint.py`; fix every error, mention the warnings.
 The garden learns from itself: besides what the owner learned, ask how the system did today.
 Look for: a note that had no obvious home, the same kind of action in the log
 three days running (a candidate for a note or a script), a topic that has grown too broad, a source that
-brought in noise, a rule in `CLAUDE.md` or a skill that was broken or worked around, a step of
+brought in noise, a rule in `CLAUDE.md`, `Rules.md` or a skill that was broken or worked around, a step of
 this loop that was slow or skipped. Propose the smallest change that would fix it (a topic
-page, a property, a Base view, a tweak to a skill or to `CLAUDE.md`, a `Sources.md` cadence),
+page, a property, a Base view, a tweak to a skill or to `Rules.md`, a `Sources.md` cadence),
 as one more numbered item. Applied changes get a dated line in `Decisions.md`.
 
 How hard to look depends on the garden's age (the first dated entry in `Decisions.md`):

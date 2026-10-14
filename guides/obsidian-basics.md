@@ -85,8 +85,8 @@ useful for spotting clusters. The backlinks pane is where the real value is.
 - One idea per note, titled as the idea ("Walking helps me think", not "Walking").
 - Link the first mention of any person, place, book or project, even before its page exists.
 - Dates are always written `2026-10-10` (year, month, day). It sorts correctly.
-- Your AI keeps the vault tidy for you. Its rules are in the vault's `CLAUDE.md`, and it
-  checks itself with `python3 bin/lint.py`.
+- Your AI keeps the vault tidy for you. Its rules are in the vault's `CLAUDE.md` and
+  `Rules.md`, and it checks itself with `python3 bin/lint.py`.
 
 ## Where to learn more
 

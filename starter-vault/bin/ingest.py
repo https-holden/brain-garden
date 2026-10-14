@@ -110,7 +110,7 @@ def kind_folder(mine: bool) -> str:
     kinds = list(CONFIG["kinds"])
     if not mine:
         if "Clippings" not in kinds:
-            sys.exit("This vault has no Clippings/ kind. Add it (see CLAUDE.md, adding a kind) or use --mine.")
+            sys.exit("This vault has no Clippings/ kind. Add it (see Rules.md, adding a kind) or use --mine.")
         return "Clippings"
     for k in ("Notes", "Knowledge"):
         if k in kinds:
