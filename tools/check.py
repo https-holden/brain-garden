@@ -11,7 +11,9 @@ size budgets lint warns on, checks every hub opens with `## Start here` and
 lint warns on a busy hub with no plain link, runs bin/paths.py over the fixture
 transcripts in tools/fixtures/paths/, sends notes to two beds through
 bin/beds.py and pulls edits back (git in temporary folders, a local bare repo
-for the remote), installs every bundled plugin, checks
+for the remote), checks the tend skill, the dated report a pass saves, due mode
+and its SessionStart hook, and that nothing sends the reader to the skill tend
+replaced, installs every bundled plugin, checks
 starter-vault/ is what the seed makes today, scans this repo's own docs
 for en and em dashes, and fails when a tracked file names a term from the
 git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
@@ -904,6 +906,253 @@ def paths_ledger(tmp):
           and not os.path.exists(os.path.join(bare, ".paths", "ledger.json")), out)
 
 
+# What sends a reader to the old monthly skill, or to a monthly pass of that name, now that `tend` does
+# it. The group name Prune in tend's list and the verb in plain prose ("what to prune") pass.
+SENDS_TO_PRUNE = [
+    re.compile(r"`pr[u]ne`"),  # the skill's name in code
+    re.compile(r"skills/pr[u]ne\b"),  # its folder
+    re.compile(r"[\"“]pr[u]ne[\"”]", re.I),  # say "prune"
+    re.compile(r"\bpr[u]ne (skill|pass)", re.I),
+    re.compile(r"\b(monthly|a|the|next) pr[u]ne\b"),  # a pass, lower case: "the Prune group" is tend's
+    re.compile(r"\bpr[u]ne (is |was )?(due|monthly|once a month|every month)", re.I),
+    re.compile(r"harvesting-and-pr[u]ning"),  # the guide's old name
+]
+
+
+def sends_to_prune(root, skip=()):
+    """'path:line: match' for every text file under root that sends the reader to the old skill."""
+    hits = []
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d != ".git" and os.path.join(dirpath, d) not in skip)
+        for fn in sorted(files):
+            path = os.path.join(dirpath, fn)
+            if path in skip or fn.endswith((".png", ".jpg", ".pdf", ".zip")):
+                continue
+            try:
+                lines = read(path).split("\n")
+            except UnicodeDecodeError:
+                continue
+            hits += ["%s:%d: %s" % (os.path.relpath(path, root), n, m.group(0))
+                     for n, line in enumerate(lines, 1) for p in SENDS_TO_PRUNE for m in p.finditer(line)]
+    return hits
+
+
+def tend_and_nudge(tmp):
+    """tend ships in every vault in place of the old skill; bin/paths.py --pass saves a dated report git
+    tracks, a paved note is asked about in one pass only, due mode prints one line or nothing, planting
+    merges the SessionStart hook that runs it, and start-of-day and lint point at tend."""
+    tmp = os.path.realpath(tmp)
+    for name in ("acme-brain", "kinds-brain", "sam-work-brain", "sam-brain"):
+        vault = os.path.join(tmp, name)
+        skills = sorted(os.listdir(os.path.join(vault, ".claude", "skills")))
+        check("%s: tend ships, the old monthly skill does not, nothing sends the reader to it" % name,
+              "tend" in skills and not [s for s in skills if s.startswith("pru")] and not sends_to_prune(vault),
+              "%s\n%s" % (skills, "\n".join(sends_to_prune(vault))))
+
+    tend = read(os.path.join(tmp, "sam-brain", ".claude", "skills", "tend", "SKILL.md"))
+    flat = " ".join(tend.split())
+    groups = re.findall(r"^### (.+)$", tend, re.M)
+    check("tend: under 9,000 chars, the seven groups in order", len(tend) < 9000 and groups == [
+        "Pave", "Compact", "Split", "Signpost", "Move cold", "Prune", "Keep"], "%d chars, %s" % (len(tend), groups))
+    missing = [s for s in ("bin/paths.py", ".paths/report.md", "only when `bin/ingest.py` exists",
+                           "Nothing dormant is named", "about 75%", "fresh reviewer", "dropped on purpose",
+                           "bin/paths.py --paved", "Paved, waiting for your verify", "one batch question",
+                           "an alias, a clearer title or a missing note", "Decisions/Archive YYYY.md",
+                           "Daily/YYYY/", "60 days", "one commit each", "bin/paths.py --pass", "bin/lint.py")
+               if s not in flat]
+    check("tend: reads only the reports, names nothing dormant, and follows the four corrections", not missing,
+          "missing %s" % missing)
+    sod = read(os.path.join(tmp, "sam-brain", ".claude", "skills", "start-of-day", "SKILL.md"))
+    check("start-of-day runs due mode and puts its line at the top of the brief",
+          "python3 bin/paths.py due" in sod and "top of the brief" in " ".join(sod.split()), sod[:2500])
+    settings = json.loads(read(os.path.join(tmp, "sam-brain", ".claude", "settings.json")) or "{}")
+    starts = (settings.get("hooks") or {}).get("SessionStart") or []
+    check("planting adds the SessionStart hook that runs due mode on startup", starts == [
+        {"matcher": "startup", "hooks": [{"type": "command", "command": "python3 bin/paths.py due"}]}], str(starts))
+
+    home = os.path.join(tmp, "tend-home")
+    os.makedirs(home)
+    env = dict(no_git_env(), HOME=home)
+    env.pop("CLAUDE_CONFIG_DIR", None)
+    code, out = seed(tmp, "--preset", "work", "--dest", "tend-brain", "--name", "Tend Brain", "--owner", "Sam",
+                     "--date", "2026-09-01")
+    check("build a vault for the tend checks", code == 0, out)
+    vault = os.path.join(tmp, "tend-brain")
+    sleep, rest = "Knowledge/Sleep comes before focus.md", "Knowledge/Rest beats caffeine.md"
+    draft = '---\ncategories: []\ncreated: 2026-09-01\nsource: ""\nstatus: draft\n---\n\nA line of text.\n'
+    extra = ["Knowledge/Paved %02d.md" % n for n in range(1, 13)]
+    for rel in [sleep, rest] + extra:
+        with open(os.path.join(vault, rel), "w", encoding="utf-8") as fh:
+            fh.write(draft)
+    with open(os.path.join(vault, ".paths", "find.log"), "w", encoding="utf-8") as fh:
+        for day in ("2026-10-09", "2026-10-10", "2026-10-11"):
+            fh.write("%s 10:00:00\tsleep\t2\t%s\t%s\n" % (day, sleep, rest))
+    paths = [PY, os.path.join("bin", "paths.py")]
+
+    def report(*args):
+        code, out = run(paths + list(args), cwd=vault, env=env)
+        text = read(os.path.join(vault, ".paths", "report.md"))
+        parts = {s.split("\n", 1)[0].split(":")[0]: s for s in text.split("\n## ")}
+        return code, out, parts.get("Drafts wanting paving", ""), parts.get("Paved, waiting for your verify", "")
+
+    code, out, drafts, paved = report("--paved", sleep, "--today", "2026-10-14")
+    ledger = json.loads(read(os.path.join(vault, ".paths", "ledger.json")) or "{}")
+    check("paths --paved: recorded in the ledger with the day; off the drafts wanting paving at once",
+          code == 0 and sleep in json.dumps(ledger.get("paved")) and "2026-10-14" in json.dumps(ledger.get("paved"))
+          and sleep not in drafts and rest in drafts and sleep not in paved, out + drafts + paved)
+    git = shutil.which("git")
+    if git:
+        run([git, "init", "-q"], cwd=vault, env=env)
+    code, out, drafts, paved = report("--pass", "--today", "2026-10-14")
+    saved = os.path.join(vault, ".paths", "reports", "2026-10-14.md")
+    ledger = json.loads(read(os.path.join(vault, ".paths", "ledger.json")) or "{}")
+    check("paths --pass: records the day and saves the report as .paths/reports/YYYY-MM-DD.md, whose header "
+          "says when the ledger started (tend's 60-day rule)",
+          code == 0 and ledger.get("last_pass") == "2026-10-14" and read(saved) != ""
+          and read(saved) == read(os.path.join(vault, ".paths", "report.md")) and "Last pass: 2026-10-14" in read(saved)
+          and "Ledger started 2026-10-14" in read(saved) and sleep not in paved, out + read(saved))
+    if git:
+        ignored = run([git, "check-ignore", "-q", ".paths/reports/2026-10-14.md"], cwd=vault, env=env)[0] == 0
+        check("paths --pass: the dated report is not git-ignored", not ignored)
+    code, out, drafts, paved = report("--today", "2026-10-20")
+    check("paths: a paved note waits for the verify on a later day, never back among the drafts",
+          sleep in paved and sleep not in drafts and rest in drafts, drafts + paved)
+    code, out, drafts, paved = report("--pass", "--today", "2026-10-20")
+    asked = read(os.path.join(vault, ".paths", "reports", "2026-10-20.md"))
+    code, out, drafts, paved = report("--today", "2026-10-21")
+    check("paths: the first pass after the pave asks once, then the note is not listed again",
+          sleep in asked.split("## Paved, waiting for your verify", 1)[-1] and sleep not in paved
+          and sleep not in drafts, asked + paved)
+    args = []
+    for rel in extra:
+        args += ["--paved", rel]
+    report(*(args + ["--today", "2026-10-21"]))
+    tdir = os.path.join(tmp, "tend-transcripts")
+    os.makedirs(tdir)
+    for n in range(1, 11):
+        with open(os.path.join(tdir, "s%02d.jsonl" % n), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"type": "user", "sessionId": "s%02d" % n, "cwd": vault,
+                                 "timestamp": "2026-10-21T09:00:00.000Z", "message": {
+                                     "role": "user", "content": "<command-name>/kind-%02d</command-name>" % n}}) + "\n")
+    code, out, drafts, paved = report("--transcripts", tdir, "--today", "2026-10-22")
+    text = read(os.path.join(vault, ".paths", "report.md"))
+    fixed = text.split("## Fixed load", 1)[-1].split("\n## ", 1)[0]
+    check("paths: the report caps the session types at 8 and the paved list at 10, each with a count",
+          len(re.findall(r"^\| kind-\d\d \|", fixed, re.M)) == 8 and "And 2 more" in fixed
+          and paved.count("\n- ") == 10 and "And 2 more" in paved, fixed + paved)
+
+    code, out = seed(tmp, "--preset", "personal", "--dest", "due-brain", "--name", "Due Brain", "--owner", "Sam")
+    vault = os.path.join(tmp, "due-brain")
+    ledger_path = os.path.join(vault, ".paths", "ledger.json")
+
+    def due(today):
+        return run(paths + ["due", "--today", today], cwd=vault, env=env)
+
+    def refresh(today, *more):
+        return run(paths + list(more) + ["--today", today], cwd=vault, env=env)
+
+    def files():
+        out = {}
+        for root, _, names in os.walk(vault):
+            for fn in names:
+                with open(os.path.join(root, fn), "rb") as fh:
+                    out[os.path.join(root, fn)] = fh.read()
+        return out
+
+    got = {}
+    got["no ledger, nothing over budget"] = due("2026-10-01")
+    refresh("2026-10-01")
+    got["fresh"] = due("2026-10-01")
+    got["7 days since the refresh"] = due("2026-10-08")
+    before = files()
+    got["8 days since the refresh"] = due("2026-10-09")
+    unchanged = files() == before
+    refresh("2026-10-31")
+    got["no pass, first refresh 30 days back"] = due("2026-10-31")
+    refresh("2026-11-01")
+    got["no pass, first refresh 31 days back"] = due("2026-11-01")
+    refresh("2026-11-01", "--pass")
+    got["a pass today"] = due("2026-11-01")
+    refresh("2026-12-01")
+    got["30 days since the pass"] = due("2026-12-01")
+    refresh("2026-12-02")
+    got["31 days since the pass"] = due("2026-12-02")
+    want = {"no ledger, nothing over budget": [], "fresh": [], "7 days since the refresh": [],
+            "8 days since the refresh": ["8 days"], "no pass, first refresh 30 days back": [],
+            "no pass, first refresh 31 days back": ["no pass", "31 days"], "a pass today": [],
+            "30 days since the pass": [], "31 days since the pass": ["last pass", "31 days"]}
+    bad = ["%s: %r" % (k, got[k][1]) for k, words in want.items() if got[k][0] != 0 or (
+        got[k][1] != "" if not words else not (got[k][1].count("\n") == 1 and "tend" in got[k][1]
+                                               and all(w in got[k][1] for w in words)))]
+    check("paths due: nothing when fresh; one line naming tend at 8 days since the refresh, at 31 days since "
+          "the pass, and with no pass 31 days after the first refresh", not bad, "\n".join(bad))
+    check("paths due: reads only, writes nothing", unchanged)
+
+    now_path = os.path.join(vault, "Now.md")
+    with open(now_path, "a", encoding="utf-8") as fh:
+        fh.write("- Should the garden grow a page for every question I keep asking myself?\n" * 170)
+    code, out = due("2026-12-02")
+    check("paths due: a file over budget is named in the same one line as the other reasons",
+          code == 0 and out.count("\n") == 1 and "Now.md" in out and "last pass" in out and "tend" in out, out)
+    code, lint_out = run([PY, os.path.join("bin", "lint.py")], cwd=vault, env=env)
+    warned = [ln for ln in lint_out.split("\n") if "budget" in ln]
+    check("lint: the budget warning names tend", code == 0 and len(warned) == 1 and "tend" in warned[0], lint_out)
+    os.remove(ledger_path)
+    code, out = due("2026-12-02")
+    check("paths due: with no ledger, only the budget reason",
+          code == 0 and out.count("\n") == 1 and "Now.md" in out and "pass" not in out and "refresh" not in out, out)
+    with open(os.path.join(vault, ".bed.json"), "w", encoding="utf-8") as fh:
+        fh.write("{}\n")
+    code, out = due("2026-12-02")
+    code2, out2 = refresh("2026-12-02")
+    check("paths: due and refresh are silent in a bed checkout",
+          code == 0 and out == "" and code2 == 0 and out2 == "" and not os.path.exists(ledger_path), out + out2)
+
+    host = os.path.join(tmp, "hook-brain")
+    os.makedirs(os.path.join(host, ".claude"))
+    theirs = {"permissions": {"allow": ["Bash(ls:*)"]},
+              "hooks": {"SessionStart": [{"matcher": "resume", "hooks": [{"type": "command", "command": "echo hi"}]}],
+                        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo pre"}]}]}}
+    with open(os.path.join(host, ".claude", "settings.json"), "w", encoding="utf-8") as fh:
+        json.dump(theirs, fh)
+    for _ in range(2):
+        code, out = seed(tmp, "--dest", "hook-brain", "--name", "Hook Brain", "--owner", "Sam")
+    data = json.loads(read(os.path.join(host, ".claude", "settings.json")) or "{}")
+    starts = (data.get("hooks") or {}).get("SessionStart") or []
+    ours = [s for s in starts if "paths.py due" in json.dumps(s)]
+    check("planting twice into a settings file with another hook and a permission merges the hook once",
+          code == 0 and theirs["hooks"]["SessionStart"][0] in starts and len(ours) == 1 and len(starts) == 2
+          and ours[0]["matcher"] == "startup" and data["hooks"]["PreToolUse"] == theirs["hooks"]["PreToolUse"]
+          and "Bash(ls:*)" in data["permissions"]["allow"]
+          and "Bash(python3 bin/paths.py:*)" in data["permissions"]["allow"], json.dumps(data, indent=1))
+
+
+def tend_docs():
+    """The repo says desire paths have landed and names tend, and nothing in it sends the reader to the old skill."""
+    hits = sends_to_prune(ROOT, skip={os.path.join(ROOT, d) for d in (".claude", "starter-vault")}
+                          | {os.path.abspath(__file__)})
+    check("no file in the repo sends the reader to the old monthly skill", not hits, "\n".join(hits[:40]))
+    guides = os.path.join(ROOT, "guides")
+    check("the harvesting guide is harvesting-and-tending.md",
+          os.path.exists(os.path.join(guides, "harvesting-and-tending.md"))
+          and not [g for g in os.listdir(guides) if g.startswith("harvesting-and-pr")])
+    roadmap, how = read(os.path.join(ROOT, "ROADMAP.md")), read(os.path.join(ROOT, "guides", "how-it-works.md"))
+    readme = read(os.path.join(ROOT, "README.md"))
+    alt = re.search(r'alt="([^"]*)"', readme)
+    missing = [p for p, ok in (
+        ("ROADMAP.md strikes desire paths", re.search(r"~~[^~]*Desire paths[^~]*~~", roadmap)),
+        ("how-it-works.md: desire paths, landed", "## Desire paths\n" in how and "`tend`" in how),
+        ("README.md names tend", "`tend`" in readme),
+        ("README.md alt text", alt and "coming" not in alt.group(1).lower() and "desire paths" in alt.group(1)),
+        ("START-HERE.md names tend", re.search(r"\btend\b", read(os.path.join(ROOT, "START-HERE.md")))),
+        ("AGENTS.md names tend", "`tend`" in read(os.path.join(ROOT, "AGENTS.md"))),
+    ) if not ok]
+    for svg in ("brain-garden-loop-light.svg", "brain-garden-loop-dark.svg"):
+        if "coming" in read(os.path.join(ROOT, "assets", svg)).lower():
+            missing.append("assets/%s says coming" % svg)
+    check("the docs and the hero image say desire paths have landed and name tend", not missing, ", ".join(missing))
+
+
 def sends_to_claude_md(text):
     """Sentences that name CLAUDE.md, not Rules.md, for the vault map, the kinds, adding a kind or the conventions."""
     return [s for s in re.split(r"(?<=[.;])\s+", " ".join(text.split()))
@@ -1490,8 +1739,10 @@ def main():
         hubs(tmp)
         paths_ledger(tmp)
         beds(tmp)
+        tend_and_nudge(tmp)
         plugins(tmp)
     recipe_guard()
+    tend_docs()
 
     code, out = run([PY, os.path.join(ROOT, "tools", "build_starter.py"), "--check"])
     check("starter-vault/ matches the seed", code == 0, out)

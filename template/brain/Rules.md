@@ -16,7 +16,7 @@ Folders say what a note *is*; `categories` says what it is *about*.
 | `Attachments/` | Every file, flat. | Subfolders. |
 | `bin/` | `lint.py` (the drift check) and its `vault.json` (kinds, budgets, beds), `find.py` (step 1 of the recipe), `paths.py` (footsteps), `beds.py` (sends notes to beds)@@BIN_EXTRA@@. Re-runnable maintenance scripts. | Secrets, logs in git. |
 | `.obsidian/` | Tracked config, the `vault.css` snippet, any home-made plugins. Document a new plugin in `Readme.md`. | Content. |
-| `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. | Hand edits. |
+| `.paths/` | `index.txt`: one line per note, kept current by `bin/find.py` and committed; `find.py --all` prints it for a chat AI. `find.log`: every lookup, kept on this machine. `ledger.json` and `report.md`: the footsteps and the report `bin/paths.py` keeps, on this machine. `reports/`: the report as each `tend` pass left it, committed. | Hand edits. |
 
 ## Kinds in use
 
@@ -51,8 +51,8 @@ reported.
 
 Every file a session loads without asking (`CLAUDE.md`, `Me.md`, `Now.md`, each skill's
 `SKILL.md`), and this one, has a size budget in characters under `budgets` in `bin/vault.json`.
-The lint warns when one is over. Compact it then to about 75% of its budget, keeping every
-fact: move detail out to a note or a skill's `references/` and leave a pointer. A path such as
+The lint warns when one is over, and the monthly `tend` compacts it to about 75% of its budget,
+keeping every fact: detail moves out to a note or a skill's `references/`, with a pointer left. A path such as
 `.claude/skills/pdf/SKILL.md` in that table gives one skill its own budget.
 
 ## Beds

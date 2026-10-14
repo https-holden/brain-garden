@@ -124,7 +124,7 @@ text to paste). Every AI that helps them later reads it first.
 
 Do not start with "what do you want to import?". Most people answer "everything" or "nothing".
 Interview them instead, a few questions at a time (the vault's `harvest` skill has the full
-procedure, and [guides/harvesting-and-pruning.md](guides/harvesting-and-pruning.md) has the
+procedure, and [guides/harvesting-and-tending.md](guides/harvesting-and-tending.md) has the
 reasoning and the prompts):
 
 1. Where does your thinking happen today? (Notes app, voice memos, messages to yourself,
@@ -155,10 +155,12 @@ vault's `harvest` skill has the steps, sample first.
 
 [guides/daily-loop.md](guides/daily-loop.md): "start my day" in the morning, jot under
 `## Notes` in the daily note, "end of day" in the evening. That habit is what makes it a
-second brain. Tell them about the monthly **prune** too: `python3 bin/ingest.py report` lists
-unused clippings, duplicates, thin topics, overdue sources and how much of each source they
-actually use, and the `prune` skill turns it into one numbered list. Nothing they wrote is
-ever deleted by it. With a chat AI, the prompts are in
+second brain. Tell them about the monthly **tend** too: the `tend` skill reads where their AI
+actually walks (`python3 bin/paths.py`) and, with the ingest tools, what they collect but
+never use (`python3 bin/ingest.py report`), and turns both into one numbered list: pave the
+drafts it keeps reading, compact the files that grew, signpost the lookups that missed, move
+what is cold, prune clippings nobody uses. Nothing they wrote is ever deleted by it, and one
+line at the start of a session says when it is due. With a chat AI, the prompts are in
 [guides/prompts-for-any-ai.md](guides/prompts-for-any-ai.md).
 
 ### 7. Optional, later
@@ -186,7 +188,7 @@ material, not yours.
 |---|---|
 | `START-HERE.md` | The same journey, written for the person instead of for you |
 | `guides/how-it-works.md` | The idea: harvest, seed, live in it; the three memory tiers; private and shared beds; desire paths |
-| `ROADMAP.md` | What is coming next (desire paths) |
+| `ROADMAP.md` | What is coming next, and what has landed |
 | `setup/` | `mac.sh` and `windows.ps1`: install what is missing and make the vault |
 | `starter-vault/` | A ready-made personal vault for people who skip the terminal |
 | `guides/` | Obsidian basics, bringing things in, the daily loop, backup, sharing, chat prompts |

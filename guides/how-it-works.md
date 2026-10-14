@@ -27,7 +27,7 @@ are only yours, and, if you choose, shared beds that friends or a team tend with
 | **Harvest** | Gather as much as you can from where your material already lives: notes apps, voice memos, articles, PDFs, email, old journals, photos of paper | The `harvest` interview finds your sources; `bin/ingest.py` brings them in; `Sources.md` keeps the list |
 | **Seed** | Put it back into the vault in a meaningful way: filed, summarized, well named, linked to topics, people and your own notes | The librarian (`bin/librarian.py`, or "file my clippings") |
 | **Live in it** | Use it every day: ask it questions, write in it, plan from it | "Start my day", your daily note, asking your AI anything |
-| **Learn** | It improves its own process as you use it: what to harvest, how to file, which kinds of note it needs, what to prune | "End of day" and the monthly "prune" |
+| **Learn** | It improves its own process as you use it: what to harvest, how to file, which kinds of note it needs, what to pave and what to cut | "End of day" and the monthly "tend" |
 
 Then round again. Every turn of the loop makes the next one cheaper: a better-filed garden is
 easier to search, which makes it more useful, which makes you put more in.
@@ -70,22 +70,31 @@ never-share list goes along; `bin/beds.py pull` brings back what the others chan
 stays the master: what a pull cannot settle on its own, it shows you instead of applying.
 [sharing-a-vault.md](sharing-a-vault.md) shows how.
 
-## Desire paths (coming)
+## Desire paths
 
 In a park, the paths people actually walk wear into the grass, and good gardeners pave them.
-The paths nobody takes grow over. A brain should work the same way, the opposite of atrophy:
-the routes you use most get stronger, and the ones you never use get compacted or pruned.
+The paths nobody takes grow over. A brain garden works the same way, the opposite of atrophy:
+the routes your AI uses most get stronger, and the files it reads every time stay lean.
 
-The first signals are already measured. `bin/ingest.py report` counts how many notes link to
-each note and how much of each source you ever use, and the monthly `prune` acts on the cold
-end. What is not built yet is the warm end: a heat map of the routes you actually travel
-(which notes you open, edit and link from, which topics your questions keep landing on), used
-to strengthen them, for example by surfacing hot notes on Home, suggesting links along
-well-worn routes, and compacting cold clusters into one summary note. It is the next thing on
-the [roadmap](../ROADMAP.md).
+It starts by measuring, with no AI and nothing sent anywhere. Every lookup with `bin/find.py`
+leaves a footstep, and `bin/paths.py` adds what Claude Code's own session logs and the git
+history show, into a report that stays on your computer: the notes your AI reads most, what
+each kind of session reads before it starts work, the files over their size budget, and the
+lookups that keep finding nothing. Notes nobody reads are only counted, never listed: quiet is
+fine.
+
+Once a month, `tend` turns that report (and, with the ingest tools, `bin/ingest.py report`)
+into one numbered list in seven groups. **Pave** the drafts your AI keeps reading: check each
+against its source, shorten it, link it from its topic's "Start here". **Compact** a file every
+session loads that grew past its budget, to about three quarters of it. **Split** a skill too
+big to load every time. **Signpost** a lookup that missed, with an alias, a clearer title or a
+missing note. **Move cold** old decisions and old daily notes into yearly folders, by date.
+**Prune** what you collect but never use. **Keep** the rest, on purpose. You approve by
+number, and every removed fact is accounted for. One line at the start of a session, and in
+the morning brief, says when tending is due; otherwise there is no line at all.
 
 ## Where to go next
 
 - Set one up: [START-HERE.md](../START-HERE.md)
-- Find your sources: [harvesting-and-pruning.md](harvesting-and-pruning.md)
+- Find your sources: [harvesting-and-tending.md](harvesting-and-tending.md)
 - The daily habit: [daily-loop.md](daily-loop.md)

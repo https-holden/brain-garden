@@ -28,7 +28,7 @@ written into one of the owner's notes.
   bulk-import before a sample has been filed and looked at.
 - `ingest.py report` is the pruning list: unused clippings, notes waiting too long, old
   drafts, stale notes, thin topics, quiet people, duplicates, unused attachments, sources due,
-  and how much of each source gets used. The `prune` skill turns it into one numbered list,
-  monthly. `ingest.py trash` is the only way anything is removed, it only moves clippings and
-  attachments that nothing links, to `.trash/`, and the owner's own notes are never removed
-  by a session.
+  and how much of each source gets used. The monthly `tend` skill reads it for the Prune group
+  of its one numbered list. `ingest.py trash` is the only way anything is removed, it only
+  moves clippings and attachments that nothing links, to `.trash/`, and the owner's own notes
+  are never removed by a session.
