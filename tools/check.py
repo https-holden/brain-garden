@@ -771,6 +771,13 @@ def beds(tmp):
     check("beds: a bed whose path is inside the vault is refused, and nothing is pushed",
           code != 0 and "inside" in out and not os.path.exists(os.path.join(vault, "Shared"))
           and not os.path.exists(recipes), out)
+    configure([{"name": "parent", "path": "..", "topics": ["Garden"]}])
+    code, out = beds_py("push")
+    code2, out2 = beds_py("push", "--force")
+    check("beds: a bed whose path holds the vault is refused, with no --force way round it",
+          code != 0 and code2 != 0 and "parent" in out and "force" not in out + out2
+          and not os.path.exists(os.path.join(tmp, ".bed.json")) and not os.path.exists(os.path.join(tmp, ".git"))
+          and not os.path.exists(recipes), out + out2)
     configure()
 
     before = snapshot(vault)
@@ -802,6 +809,24 @@ def beds(tmp):
     os.remove(os.path.join(vault, "Attachments", "acme corp logo.png"))
     note("References/Flour.md", flour)
     note("Notes/Compost.md", compost)
+    words, kept = os.path.join(vault, "bin", "never-share.txt"), os.path.join(tmp, "never-share-list.txt")
+    os.rename(words, kept)
+    try:
+        os.symlink(kept, words)
+    except (OSError, NotImplementedError):
+        print("skip  beds: a symlinked never-share list is read (no symlinks on this machine)")
+    else:
+        note("Notes/Waffles.md", waffles.replace("Like [[Pancakes]].", "Like [[Pancakes]], a tip from acme corp."))
+        code, out = beds_py("push")
+        note("Notes/Waffles.md", waffles)
+        os.remove(words)
+        os.symlink(os.path.join(tmp, "no-such-list.txt"), words)
+        code2, out2 = beds_py("push")
+        check("beds: a never-share list behind a symlink is still read, and one that cannot be read stops the push",
+              code != 0 and "Notes/Waffles.md" in out and "Acme Corp" in out
+              and code2 != 0 and "never-share.txt" in out2 and not os.path.exists(recipes), out + out2)
+        os.remove(words)
+    os.rename(kept, words)
     note("Notes/Broken.md", '---\ncategories:\n  - "[[Nowhere]]"\ncreated: 2026-10-01\ntopics: []\n---\n')
     code, out = beds_py("push")
     check("beds: push refuses while the brain's lint has errors", code != 0 and "lint" in out and "Nowhere" in out
@@ -994,12 +1019,50 @@ def beds(tmp):
     code2, out2 = beds_py("push", "garden")
     check("beds: pull applies it, `beds` put back, and the next push goes through",
           code == 0 and "water it" in pulled and "beds: [garden]" in pulled and code2 == 0, out + pulled + out2)
+    note("Notes/Tomatoes.md", read(os.path.join(garden, "Notes", "Tomatoes.md")).replace(
+        "topics: []", "topics: []\nbeds: [recipes]").replace('  - "[[Garden]]"', '  - "[[Garden]]"\n  - "[[Recipes]]"')
+        .replace("Stake them.", "Stake them early."), garden)
+    run([git, "-C", garden, "commit", "-q", "-am", "Move it"], env=env)
+    code, out = beds_py("pull", "garden")
+    pulled = read(os.path.join(vault, "Notes", "Tomatoes.md"))
+    code2, out2 = beds_py("push", "garden")
+    check("beds: pull never changes which beds a note goes to: a `beds` property or a topic from outside the "
+          "bed is held back and reported, the rest of the edit applied",
+          code == 0 and "Stake them early." in pulled and "beds:" not in pulled and "[[Recipes]]" not in pulled
+          and re.search(r"HELD BACK\s+Notes/Tomatoes\.md.*`beds`", out) is not None
+          and re.search(r"HELD BACK\s+Notes/Tomatoes\.md.*\[\[Recipes\]\]", out) is not None and code2 == 0,
+          out + pulled + out2)
     os.remove(os.path.join(vault, ".paths", "beds", "garden.json"))
     code, out = beds_py("push", "garden")
     code2, out2 = beds_py("push", "garden", "--force")
     check("beds: with no sync state, push refuses a bed that has commits unless forced",
           code != 0 and "no sync state" in out and code2 == 0
           and os.path.exists(os.path.join(vault, ".paths", "beds", "garden.json")), out + out2)
+    daily = os.path.join(vault, "Daily", "2026-10-10.md")
+    diary = read(daily)
+    os.remove(os.path.join(garden, "Notes", "Tomatoes.md"))
+    try:
+        os.link(daily, os.path.join(garden, "Notes", "Tomatoes.md"))
+        linked = True
+    except (OSError, NotImplementedError):
+        print("skip  beds: a hardlink in the bed never reaches a brain file (no hardlinks on this machine)")
+        linked = False
+    run([git, "-C", garden, "commit", "-q", "-am", "A hardlink"], env=env)
+    code, out = beds_py("push", "garden", "--force")
+    if linked:
+        check("beds: push replaces a file in the bed rather than writing into it, so a hardlink there never "
+              "reaches a brain file", code == 0 and read(daily) == diary
+              and "Stake them early." in read(os.path.join(garden, "Notes", "Tomatoes.md")), out + read(daily))
+    os.remove(os.path.join(garden, "Notes", "Compost.md"))
+    note("Notes/Compost.md/inside.md", "A folder now.\n", garden)
+    for args in (["add", "-A"], ["commit", "-q", "-m", "A folder"]):
+        run([git, "-C", garden] + args, env=env)
+    code, out = beds_py("pull", "garden")
+    code2, out2 = beds_py("push", "garden", "--force")
+    check("beds: a note replaced by a folder in the bed is a conflict for pull and stops push, never a crash",
+          code == 0 and re.search(r"CONFLICT\s+Notes/Compost\.md", out) is not None and code2 != 0
+          and "Notes/Compost.md" in out2 and "Traceback" not in out + out2
+          and os.path.isdir(os.path.join(garden, "Notes", "Compost.md")), out + out2)
 
     shutil.move(recipes, recipes + "-old")
     code, out = beds_py("clone")
