@@ -33,10 +33,15 @@ On the way out, a push also:
 - strips the properties you list for that bed (a `source` that names a private conversation,
   a personal `rating`), and the `beds` property itself;
 - keeps only the bed's own topics in `categories`;
-- rewrites links so they work on GitHub as well as in Obsidian: a link to a note in the bed
-  becomes a relative link, and a link to a note that stays home becomes plain text;
+- leaves your `%% comments %%` home, so a private aside inside a shared note stays private;
+- rewrites links, in the text and in the other properties, so they work on GitHub as well as
+  in Obsidian: a link to a note in the bed becomes a relative link, and a link to anything that
+  stays home becomes plain text. Links inside code are left as they are;
 - writes on each topic page a list of its notes, between `<!-- beds:list:start -->` and
   `<!-- beds:list:end -->`, so the bed reads well without Obsidian.
+
+A symlink is never followed, in your vault or in a bed: one in your vault is skipped, and one in
+a bed stops every push and pull until it is gone. Nothing in a bed is ever run on your computer.
 
 ## Making a bed
 
@@ -53,7 +58,7 @@ Ask your AI ("set up a bed for my recipes, shared with my sister"), or do it by 
    ]
    ```
 
-   `path` is where the bed lives, next to your vault. `remote` is optional.
+   `path` is where the bed lives, next to your vault (never inside it). `remote` is optional.
 3. **Choose what goes**: topics in `topics`, single notes with `beds: [recipes]`.
 4. **Write your never-share list**: `bin/never-share.txt`, one word or phrase per line (a
    client, a friend's surname, a project's code name). A push stops while any note it would
@@ -61,7 +66,9 @@ Ask your AI ("set up a bed for my recipes, shared with my sister"), or do it by 
    leaves either.
 5. **Look first, then send**: `python3 bin/beds.py push --dry-run` lists every note that would
    go. Then `python3 bin/beds.py push` makes the bed, commits there and pushes to the
-   repository. Commit your brain too: `.paths/beds/recipes.json` records what was synced.
+   repository. It records what was synced in `.paths/beds/recipes.json` and, when your vault
+   is a git repository, commits that file there too. Offline, the push still commits in the
+   bed, and the next one sends it.
 6. **Invite people** to the repository.
 
 ## Keeping it in step
@@ -87,9 +94,11 @@ your links put back. It reports, and never applies:
 
 Pull never deletes a note in your brain.
 
-**Push refuses** while your vault's lint has errors, while a note it would send holds a
-never-share word, and while the bed has changes you have not pulled yet. `--force` overrides
-only the last one, and the others' versions stay in the bed's git history.
+**Push refuses** while your vault's lint has errors, while a file it would send holds a
+never-share word (in its name, its properties or its text), and while the bed has changes you
+have not pulled yet, or has commits when your vault has no sync state for it (a lost
+`.paths/beds/` file: restore it from git). `--force` overrides only those last two, and the
+others' versions stay in the bed's git history.
 
 ## The other side: tending a bed
 
