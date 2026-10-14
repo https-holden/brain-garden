@@ -22,6 +22,8 @@ Work out what the owner is handing you and whether they wrote it:
   suggest Obsidian's **Importer** community plugin first, imported into a scratch folder, and
   then `bin/ingest.py add --mine <that folder>` to give the notes this vault's properties.
   Delete the scratch folder only after the owner has checked the result.
+- An existing Obsidian vault (a folder with `.obsidian/` in it): not plain `add`. That is
+  `add --vault`, which proposes a mapping first; the `harvest` skill has the steps.
 
 Use `--dry-run` first when it is more than a handful of files, and show the list.
 

@@ -41,6 +41,7 @@ The AI should ask you these, a few at a time. Answer honestly; "I don't know" is
 | Articles and web pages | The Obsidian Web Clipper button | as it comes |
 | Bookmarks, saved links | A text file of links, `ingest.py add --links` | once, then monthly |
 | Your old notes app | Obsidian's Importer plugin, then `ingest.py add --mine` | once |
+| An Obsidian vault you already have | `ingest.py add --vault`, which proposes where each folder goes | once |
 | Documents and PDFs | `ingest.py add` (add `--mine` if you wrote them) | once, then as it comes |
 | Voice memos | The transcript as a text file, `ingest.py add --mine` | weekly |
 | Emails worth keeping | Drag them out as `.eml` files, `ingest.py add` | as it comes |

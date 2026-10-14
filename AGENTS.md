@@ -50,9 +50,9 @@ Then ask whether that sounds like what they want, and answer questions before mo
    and in a sentence what they most want it to help with. Life or job picks the preset:
    `personal` or `work`. The sentence goes in `Me.md` later.
 2. **Where most of their material already lives**: the one or two places that hold the bulk
-   of it (Apple Notes, Notion, Google Docs, voice memos, email, paper). Do not import anything
-   yet; this tells you what to harvest first in step 5, and whether they need the Importer
-   plugin or PDF support during setup.
+   of it (Apple Notes, Notion, Google Docs, voice memos, email, paper, an Obsidian vault they
+   already have). Do not import anything yet; this tells you what to harvest first in step 5,
+   and whether they need the Importer plugin or PDF support during setup.
 3. **Their computer**: Mac or Windows. (Linux works like the Mac path.)
 4. **What you can do**: if you can run commands on their machine (Claude Code, the Claude
    desktop app's Code tab, Codex), you do the commands and they watch. If you are a chat in a
@@ -146,6 +146,10 @@ or "file my clippings"; with a chat AI, the `--paste` and `--apply` round trip),
 or three in Obsidian together. Is this what they wanted to keep? Adjust, and only then bring in
 the rest, with `--dry-run` first. Their own writing before other people's, recent before old.
 Show them the topic pages filling themselves in.
+
+An Obsidian vault they already have is one more source: `python3 bin/ingest.py add --vault
+<its folder>` proposes which folder goes where and copies nothing until they agree; the
+vault's `harvest` skill has the steps, sample first.
 
 ### 6. Show them the daily loop
 

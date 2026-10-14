@@ -174,6 +174,124 @@ def prune_round_trip(vault, fx):
           and "| New place |" in text, text)
 
 
+def old_vault(d):
+    """An existing Obsidian vault, as someone might bring it: two content folders, a dated note, an
+    image in a subfolder, a name that clashes, a templates folder, a Base, a Canvas, rule files."""
+    def put(rel, text, mtime=None):
+        path = os.path.join(d, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb" if isinstance(text, bytes) else "w") as fh:
+            fh.write(text)
+        if mtime:
+            os.utime(path, (mtime, mtime))
+
+    put(".obsidian/app.json", "{}")
+    put(".obsidian/templates.json", '{"folder": "_templates"}')
+    put(".trash/Gone.md", "deleted\n")
+    put("_templates/Meeting.md", "---\ncreated: {{date}}\n---\n")
+    put("Board.base", "views: []\n")
+    put("Map.canvas", "{}")
+    put("CLAUDE.md", "Answer in one line.\n")
+    put("Home.md", "Start at [[Plan]].\n")
+    put("Projects/Plan.md", "---\ncategories:\n  - \"[[Gardening]]\"\ncreated: 2021-03-04\naliases:\n  - Garden plan\n"
+        "tags:\n  - green\nrating: 4\n---\n# Plan\n\nBack to [[Home]], [[Home|the start]] and [[Home#Top]].\n\n"
+        "![[x.png]]\n\n![[Ideas]]\n\nSee [[Old]] too.\n")
+    put("Projects/Ideas.md", "Ideas for [[Projects/Plan|the plan]].\n", mtime=1577923200)  # 2020-01-02
+    put("Reading/Article.md", "---\ncategories: [\"[[Reading list]]\"]\nurl: https://example.com/a\n"
+        "author: \"[[Jane Doe]]\"\n---\nSomeone else's words \u2013 with a dash.\n")
+    put("Journal/2024-05-01.md", "Planted beans, see [[Plan]].\n")
+    put("Archive/Old.md", "old\n")
+    put("Attachments/img/x.png", base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="))
+
+
+def vault_import(tmp):
+    """ingest.py add --vault: a proposal first, then a sample, then the rest, as the harvest skill runs it."""
+    code, out = seed(tmp, "--preset", "personal", "--dest", "import-brain", "--name", "Import Brain", "--owner", "Sam")
+    vault = os.path.join(tmp, "import-brain")
+    src = os.path.join(tmp, "old-vault")
+    old_vault(src)
+    with open(os.path.join(vault, "Attachments", "x.png"), "wb") as fh:
+        fh.write(b"already here")
+    ing = [PY, os.path.join(vault, "bin", "ingest.py"), "add"]
+    maps = ["--map", ".=Notes", "--map", "Projects=Notes", "--map", "Reading=Clippings", "--map", "dates=Daily"]
+
+    def tree():
+        out = []
+        for root, dirs, files in os.walk(vault):
+            dirs[:] = [x for x in dirs if x != ".git"]
+            out += [os.path.relpath(os.path.join(root, f), vault) for f in files]
+        return sorted(out), open(os.path.join(vault, "Sources.md"), encoding="utf-8").read()
+
+    def read(rel):
+        path = os.path.join(vault, rel)
+        return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+
+    before = tree()
+    code, out = run(ing + [src], cwd=vault)
+    check("import: a plain add of a vault points at --vault and writes nothing",
+          "--vault" in out and "ADDED" not in out and tree() == before, out)
+    code, out = run(ing + ["--vault", src], cwd=vault)
+    listed = [ln for ln in out.split("\n") if re.match(r"\s*\d+\. ", ln)]
+    want = [r"\(root\).*1 note.*Notes", r"Projects.*2 notes.*Notes", r"Reading.*1 note", r"Archive.*1 note",
+            r"dates.*1 note.*Daily"]
+    missing = [w for w in want if not any(re.search(w, ln) for ln in listed)]
+    check("import: no mapping proposes one, numbered with counts, and writes nothing",
+          code == 0 and not missing and not any("_templates" in ln or "Journal" in ln for ln in listed)
+          and '--map "Projects=Notes"' in out and '--map "dates=Daily"' in out and tree() == before,
+          "missing %s\n%s" % (missing, out))
+
+    code, out = run(ing + ["--vault", src, "--dry-run"] + maps, cwd=vault)
+    check("import: --dry-run prints the plan and writes nothing",
+          code == 0 and out.count("ADDED") == 5 and tree() == before, out)
+    code, sample = run(ing + ["--vault", src, "--sample", "2", "--via", "Old vault"] + maps, cwd=vault)
+    check("import: --sample 2 imports two notes and stops",
+          code == 0 and sample.count("ADDED") == 2 and read("Notes/Home (2).md") and read("Daily/2024-05-01.md")
+          and not read("Notes/Plan.md"), sample)
+    check("import: --via stamps Sources.md", "| Old vault |" in read("Sources.md"), read("Sources.md"))
+    code, out = run(ing + ["--vault", src, "--via", "Old vault"] + maps, cwd=vault)
+    check("import: the full run brings the rest and skips the sample",
+          code == 0 and out.count("ADDED") == 3 and "2 notes imported before" in out
+          and not os.path.exists(os.path.join(vault, "Notes", "Home (3).md")), out)
+
+    plan, ideas, home = read("Notes/Plan.md"), read("Notes/Ideas.md"), read("Notes/Home (2).md")
+    clip = read("Clippings/Article.md")
+    check("import: notes land in their mapped kinds, the dated one in Daily/",
+          plan and ideas and home and clip and "beans" in read("Daily/2024-05-01.md"), out)
+    check("import: categories, created, aliases, tags and other properties kept",
+          '- "[[Gardening]]"' in plan and "created: 2021-03-04" in plan and "Garden plan" in plan
+          and "- green" in plan and "rating: 4" in plan and "created: 2020-01-02" in ideas
+          and "https://example.com/a" in clip and "[[Jane Doe]]" in clip and "via: \"Old vault\"" in plan, plan + ideas + clip)
+    check("import: missing topic pages made from the topic template",
+          read("Categories/Gardening.md") == read("Templates/Topic Template.md")
+          and read("Categories/Reading list.md"), out)
+    check("import: the embedded image is copied flat, renamed on a clash, and the embed rewritten",
+          "![[x (2).png]]" in plan and os.path.exists(os.path.join(vault, "Attachments", "x (2).png"))
+          and read("Attachments/x.png") == "already here", plan)
+    check("import: the clashing note is renamed and every link to it rewritten",
+          "[[Home (2)]], [[Home (2)|the start]] and [[Home (2)#Top]]" in plan and "RENAMED  Home" in sample
+          and "[[Plan|the plan]]" in ideas and "![[Ideas]]" in plan and "[[Old]]" in plan, sample + plan + ideas)
+    check("import: dashes replaced in imported text", "\u2013" not in clip and "words - with" in clip, clip)
+    names = " ".join(tree()[0])
+    check("import: nothing comes in from the skipped places",
+          not any(n in names for n in ("Gone", "Meeting", "Board.base", "Map.canvas", "Old.md"))
+          and "Answer in one line" not in "".join(read(p) for p in tree()[0] if p.endswith(".md")), names)
+    summary = ["SKIPPED  .obsidian/ (2 files)", "SKIPPED  .trash/ (1 file)", "SKIPPED  _templates/",
+               "SKIPPED  1 .base file", "SKIPPED  1 .canvas file", "SKIPPED  Archive/ (1 note): not mapped",
+               "CLAUDE.md", "Decisions.md", "Me.md"]
+    missing = [s for s in summary if s not in out]
+    check("import: the summary counts what was skipped and names the old rule files", not missing,
+          "missing %s\n%s" % (missing, out))
+    code, out = run([PY, os.path.join(vault, "bin", "lint.py")], cwd=vault)
+    check("import: lint passes after the import", code == 0, out)
+    if os.path.exists(os.path.join(vault, "bin", "find.py")):
+        index = read(".paths/index.txt")
+        check("import: the index lists the imported notes",
+              all(n in index for n in ("Notes/Plan", "Notes/Ideas", "Notes/Home (2)", "Clippings/Article")), index)
+    else:
+        print("skip  import: the index lists the imported notes (no bin/find.py yet)")
+
+
 def daily_loop(tmp):
     """The brief's reply cards, the action log, the standing rules, and every skill's header."""
     vault = os.path.join(tmp, "sam-brain")
@@ -326,6 +444,7 @@ def main():
         ingest_round_trip(os.path.join(tmp, "sam-brain"), fx)
         prune_round_trip(os.path.join(tmp, "sam-work-brain"), fx)
         daily_loop(tmp)
+        vault_import(tmp)
         plugins(tmp)
 
     code, out = run([PY, os.path.join(ROOT, "tools", "build_starter.py"), "--check"])

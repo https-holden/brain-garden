@@ -17,6 +17,10 @@ written into one of the owner's notes.
   boxed in to the waiting notes), or a chat AI (`bin/librarian.py --paste`, then `--apply`).
 - Big exports from another app go through Obsidian's Importer plugin into a scratch folder,
   then `ingest.py add --mine` on that folder.
+- An existing Obsidian vault is one more source: `ingest.py add --vault <folder>` writes
+  nothing and proposes a numbered folder-to-kind mapping; agree it with the owner, then run it
+  with `--map "Folder=Kind"` flags, `--sample 10` first. Its own `CLAUDE.md` or `AGENTS.md` is
+  never imported: propose its rules for `Decisions.md` and `Me.md` as a numbered list.
 - `Sources.md` is the inventory of where material comes from: how, cadence, last pulled, and
   whether it is worth keeping. Pass `--via "<Source>"` on every `add`, so the note records
   where it came from and the row's Last pulled is stamped. The `harvest` skill builds the
