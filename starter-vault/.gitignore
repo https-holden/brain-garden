@@ -16,3 +16,6 @@ __pycache__/
 
 # The find log (every lookup) stays on this machine; the index beside it is committed
 .paths/find.log
+
+# Words bin/beds.py never lets leave for a bed: the list itself never leaves either
+bin/never-share.txt

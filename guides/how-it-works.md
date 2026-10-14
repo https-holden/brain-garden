@@ -62,9 +62,13 @@ evening loop does the moving.
 ## Private and shared beds
 
 All of a brain garden is private by default: it lives on your computer, and nothing leaves it
-unless you send it. If you later want to grow part of it with other people (a team's know-how,
-a family's recipes), the shared part can live in a git repository everyone pulls from, while
-your own notes stay on your machine. [sharing-a-vault.md](sharing-a-vault.md) shows how.
+unless you send it. If you later want to grow part of it with other people (a family's recipes,
+a team's know-how), the brain sends vines to its beds. A bed is a separate vault in its own git
+repository, holding only the notes you chose for it, by topic or one by one. `bin/beds.py push`
+sends them, with your private properties stripped and a check that no name on your
+never-share list goes along; `bin/beds.py pull` brings back what the others changed. Your brain
+stays the master: what a pull cannot settle on its own, it shows you instead of applying.
+[sharing-a-vault.md](sharing-a-vault.md) shows how.
 
 ## Desire paths (coming)
 

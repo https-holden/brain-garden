@@ -8,7 +8,9 @@ vault's own check, pushes sample files through bin/ingest.py, round-trips a
 fake chat answer through bin/librarian.py --apply, checks the daily loop's
 reply cards and action log, checks the CLAUDE.md and Rules.md split and the
 size budgets lint warns on, checks every hub opens with `## Start here` and
-lint warns on a busy hub with no plain link, installs every bundled plugin, checks
+lint warns on a busy hub with no plain link, sends notes to two beds through
+bin/beds.py and pulls edits back (git in temporary folders, a local bare repo
+for the remote), installs every bundled plugin, checks
 starter-vault/ is what the seed makes today, scans this repo's own docs
 for en and em dashes, and fails when a tracked file names a term from the
 git-ignored tools/never-share.txt. Prints one line per check and exits 1 if
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from urllib.parse import unquote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEED = os.path.join(ROOT, "setup", "build_vault.py")
@@ -819,6 +822,251 @@ def never_share():
     check("no tracked file names a never-share term (%d terms)" % len(terms), not hits, "\n".join(hits[:40]))
 
 
+def git_env(tmp):
+    """No GIT_* variables, and a HOME holding only a git identity, so commits work on any machine (CI
+    has no identity) and the user's own git config (signing, hooks) stays out of the checks."""
+    home = os.path.join(tmp, "git-home")
+    os.makedirs(home, exist_ok=True)
+    with open(os.path.join(home, ".gitconfig"), "w", encoding="utf-8") as fh:
+        fh.write("[user]\n\tname = Sam\n\temail = sam@example.com\n[init]\n\tdefaultBranch = main\n"
+                 "[commit]\n\tgpgsign = false\n")
+    env = no_git_env()
+    env.update(HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"))
+    return env
+
+
+def files_in(root):
+    """{relative path: bytes} of every file under root, leaving out .git/ and __pycache__/."""
+    out = {}
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__")]
+        for fn in files:
+            path = os.path.join(here, fn)
+            with open(path, "rb") as fh:
+                out[os.path.relpath(path, root).replace(os.sep, "/")] = fh.read()
+    return out
+
+
+def beds(tmp):
+    """bin/beds.py: inert with no bed; two beds get exactly their notes, stripped and with working links;
+    a bed is a vault; never-share and lint stop a push; pull brings edits back and reports the rest; clone."""
+    code, out = seed(tmp, "--preset", "personal", "--dest", "beds-brain", "--name", "Beds Brain", "--owner", "Sam")
+    check("build a vault for the beds checks", code == 0, out)
+    vault = os.path.join(tmp, "beds-brain")
+    recipes, garden = os.path.join(tmp, "beds-recipes"), os.path.join(tmp, "beds-garden")
+    env = git_env(tmp)
+
+    def beds_py(*args):
+        return run([PY, os.path.join("bin", "beds.py"), *args], cwd=vault, env=env)
+
+    def note(rel, text, root=vault):
+        path = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    docs = {"guides/sharing-a-vault.md": "bin/beds.py push", "guides/how-it-works.md": "sends vines to its beds",
+            "README.md": "`beds.py`", "AGENTS.md": "beds"}
+    missing = [p for p, s in docs.items() if s not in " ".join(read(os.path.join(ROOT, p)).split())]
+    rules = read(os.path.join(vault, "Rules.md"))
+    missing += [] if "\n## Beds\n" in rules and "bin/beds.py status" in rules and "never-share.txt" in rules else ["Rules.md"]
+    missing += [] if "bin/beds.py" in read(os.path.join(vault, "Readme.md")) else ["Readme.md (planted)"]
+    check("beds: the sharing guide, how it works, README, AGENTS.md and the planted Rules.md and Readme.md "
+          "describe beds", not missing, ", ".join(missing))
+    before = files_in(vault)
+    outs = [beds_py(*a) for a in (["status"], ["push"], ["push", "--dry-run"], ["pull"], ["clone"])]
+    check("beds: with no bed configured every command says so in one line and writes nothing",
+          all(c == 0 and len(o.strip().split("\n")) == 1 and "no bed is configured" in o for c, o in outs)
+          and files_in(vault) == before and not os.path.exists(recipes), "\n".join(o for _, o in outs))
+    git = shutil.which("git")
+    if not git:
+        print("skip  beds: push, pull and clone (no git on this machine)")
+        return
+
+    topic = read(os.path.join(vault, "Templates", "Topic Template.md"))
+    for name in ("Recipes", "Garden", "Health"):
+        note("Categories/%s.md" % name, topic)
+    note("Notes/Pancakes.md", '---\ncategories:\n  - "[[Recipes]]"\n  - "[[Health]]"\ncreated: 2026-10-01\n'
+         'topics: []\nsource: "Acme Corp card"\n---\n\nMix [[Flour]] with [[Eggs|two eggs]] and milk.\n\n'
+         "Serve like [[Waffles#Batter|the waffle batter]], never like [[Secret plan]]. Ask [[Bob Smith]].\n\n"
+         "![[pancakes.png]]\n")
+    note("Notes/Waffles.md", '---\ncategories: ["[[Recipes]]"]\ncreated: 2026-10-01\ntopics: []\n---\n\n'
+         "## Batter\n\nLike [[Pancakes]].\n")
+    note("References/Flour.md", '---\ncategories:\n  - "[[Recipes]]"\ncreated: 2026-10-01\nauthor: []\nurl: \n'
+         "rating: 5\n---\n\nPlain flour.\n")
+    note("Notes/Secret plan.md", '---\ncategories:\n  - "[[Health]]"\ncreated: 2026-10-01\ntopics: []\n---\n\n'
+         "For Acme Corp only.\n\n![[private.png]]\n")
+    note("Notes/Tomatoes.md", '---\ncategories:\n  - "[[Garden]]"\ncreated: 2026-10-01\ntopics: []\n---\n\nStake them.\n')
+    note("Notes/Compost.md", "---\ncategories: []\ncreated: 2026-10-01\ntopics: []\nbeds: [garden]\n---\n\n"
+         "Turn it weekly.\n")
+    note("People/Bob Smith.md", '---\ncategories:\n  - "[[Recipes]]"\ncreated: 2026-10-01\norg: []\nrole: \n'
+         "source: \nbeds: [recipes]\n---\n")
+    note("Daily/2026-10-10.md", '---\ntags:\n  - daily\ncssclasses:\n  - workbook\ncategories:\n  - "[[Recipes]]"\n'
+         "beds: [recipes]\n---\n\nMade pancakes.\n")
+    note("Recipe ideas.md", '---\ncategories:\n  - "[[Recipes]]"\nbeds: [recipes, garden]\n---\n\nTry crepes.\n')
+    note("Me.md", read(os.path.join(vault, "Me.md")).replace("---\n", '---\nbeds: [recipes]\ncategories:\n'
+                                                                    '  - "[[Recipes]]"\n', 1))
+    for img in ("pancakes.png", "private.png"):
+        with open(os.path.join(vault, "Attachments", img), "wb") as fh:
+            fh.write(img.encode())
+    note("bin/never-share.txt", "# words that never leave this brain\nAcme Corp\nPan\n")
+    bare = os.path.join(tmp, "recipes.git")
+    run([git, "-C", tmp, "init", "-q", "--bare", "recipes.git"], env=env)
+    config_path = os.path.join(vault, "bin", "vault.json")
+    config = json.load(open(config_path, encoding="utf-8"))
+    config["beds"] = [{"name": "recipes", "path": "../beds-recipes", "remote": bare, "topics": ["Recipes"],
+                       "strip": ["source", "rating"]},
+                      {"name": "garden", "path": "../beds-garden", "topics": ["Garden"], "strip": []}]
+    with open(config_path, "w", encoding="utf-8") as fh:
+        json.dump(config, fh, indent=2)
+    code, out = run([PY, os.path.join("bin", "lint.py")], cwd=vault)
+    check("beds: the fixture brain passes its lint", code == 0, out)
+
+    before = files_in(vault)
+    code, out = beds_py("push", "--dry-run")
+    check("beds: push --dry-run lists what would go and writes nothing",
+          code == 0 and "+ Notes/Pancakes.md" in out and "+ Notes/Compost.md" in out and files_in(vault) == before
+          and not os.path.exists(recipes) and not os.path.exists(garden), out)
+    waffles = read(os.path.join(vault, "Notes", "Waffles.md"))
+    note("Notes/Waffles.md", waffles.replace("Like [[Pancakes]].", "Like [[Pancakes]], a tip from acme corp."))
+    code, out = beds_py("push")
+    check("beds: a never-share word in a sent note stops the push, naming the note and the word; one in a "
+          "stripped property, in a note that stays home or inside a longer word does not",
+          code != 0 and "Notes/Waffles.md" in out and "Acme Corp" in out and "Pancakes" not in out
+          and "Secret plan" not in out and not os.path.exists(recipes) and not os.path.exists(garden), out)
+    note("Notes/Waffles.md", waffles)
+    note("Notes/Broken.md", '---\ncategories:\n  - "[[Nowhere]]"\ncreated: 2026-10-01\ntopics: []\n---\n')
+    code, out = beds_py("push")
+    check("beds: push refuses while the brain's lint has errors", code != 0 and "lint" in out and "Nowhere" in out
+          and not os.path.exists(recipes), out)
+    os.remove(os.path.join(vault, "Notes", "Broken.md"))
+
+    code, out = beds_py("push")
+    check("beds: push sends to both beds", code == 0, out)
+    shared = ("bin/", "Templates/", ".obsidian/", ".paths/")
+    sent = {b: sorted(p for p in files_in(b) if not p.startswith(shared)
+                      and p not in ("CLAUDE.md", "Rules.md", ".gitignore", ".bed.json")) for b in (recipes, garden)}
+    check("beds: each bed gets exactly the notes tagged for it or in its topics and their attachments, never a "
+          "daily note, a person or a root document",
+          sent[recipes] == ["Attachments/pancakes.png", "Categories/Recipes.md", "Notes/Pancakes.md",
+                            "Notes/Waffles.md", "References/Flour.md"]
+          and sent[garden] == ["Categories/Garden.md", "Notes/Compost.md", "Notes/Tomatoes.md"], str(sent))
+    pan = read(os.path.join(recipes, "Notes", "Pancakes.md"))
+    check("beds: a sent note loses the stripped properties, `beds` and the topics its bed does not have",
+          "source:" not in pan and "Health" not in pan and '  - "[[Recipes]]"' in pan
+          and "rating" not in read(os.path.join(recipes, "References", "Flour.md"))
+          and "rating" not in read(os.path.join(recipes, "Templates", "Reference Template.md"))
+          and "beds:" not in read(os.path.join(garden, "Notes", "Compost.md")), pan)
+    check("beds: links into the bed become relative Markdown links, links out of it plain text",
+          "Mix [Flour](../References/Flour.md) with two eggs and milk." in pan
+          and "Serve like [the waffle batter](Waffles.md#Batter), never like Secret plan. Ask Bob Smith." in pan
+          and "![](../Attachments/pancakes.png)" in pan and "[[" not in pan.split("\n---", 1)[1], pan)
+    broken = []
+    for bed in (recipes, garden):
+        for rel, data in files_in(bed).items():
+            if rel.endswith(".md") and not rel.startswith(shared):
+                for href in re.findall(r"\]\(([^)\s]+)\)", data.decode("utf-8")):
+                    target = os.path.join(bed, os.path.dirname(rel), unquote(href.split("#")[0]))
+                    if not os.path.exists(target):
+                        broken.append("%s: %s" % (rel, href))
+    check("beds: every link in a bed resolves to a file in the bed", not broken, "\n".join(broken))
+    page = read(os.path.join(recipes, "Categories", "Recipes.md"))
+    listed = page.split("<!-- beds:list:start -->")[-1].split("<!-- beds:list:end -->")[0]
+    check("beds: each topic page in a bed lists its notes between markers",
+          "<!-- beds:list:end -->" in page and all(item in listed for item in (
+              "- [Flour](../References/Flour.md)", "- [Pancakes](../Notes/Pancakes.md)",
+              "- [Waffles](../Notes/Waffles.md)")) and "Bob" not in listed
+          and "- [Tomatoes](../Notes/Tomatoes.md)" in read(os.path.join(garden, "Categories", "Garden.md")), page)
+    results = [run([PY, os.path.join(bed, "bin", "lint.py")], cwd=bed) if os.path.isdir(bed) else (1, "no bed")
+               for bed in (recipes, garden)]
+    code, found = run([PY, os.path.join(recipes, "bin", "find.py"), "--topic", "Recipes"],
+                      cwd=recipes) if os.path.isdir(recipes) else (1, "no bed")
+    marker = json.loads(read(os.path.join(recipes, ".bed.json")) or "{}")
+    check("beds: a bed opens as a vault (CLAUDE.md, Rules.md, templates, .bed.json): its lint passes and its "
+          "find tool works",
+          all(c == 0 and " 0 errors" in o for c, o in results) and marker == {"bed": "recipes"}
+          and "edits made here back" in read(os.path.join(recipes, "CLAUDE.md"))
+          and read(os.path.join(recipes, "Rules.md")) == read(os.path.join(vault, "Rules.md"))
+          and found.split("\n")[:3] == ["Notes/Pancakes :: :: Recipes ::", "Notes/Waffles :: :: Recipes ::",
+                                        "References/Flour :: :: Recipes ::"],
+          "\n".join(o for _, o in results) + found)
+    head = run([git, "-C", recipes, "rev-parse", "HEAD"], env=env)[1].strip()
+    code, out = beds_py("push")
+    check("beds: push commits in the bed and pushes to its remote; a second push with nothing new commits nothing",
+          code == 0 and head and run([git, "-C", bare, "rev-parse", "HEAD"], env=env)[1].strip() == head
+          and run([git, "-C", recipes, "rev-parse", "HEAD"], env=env)[1].strip() == head
+          and os.path.exists(os.path.join(vault, ".paths", "beds", "recipes.json")), out)
+    code, out = beds_py("status")
+    check("beds: status names each bed", code == 0 and "beds: recipes" in out and "beds: garden" in out, out)
+
+    collab = os.path.join(tmp, "collab-recipes")
+    run([git, "-C", tmp, "clone", "-q", bare, "collab-recipes"], env=env)
+    note("Notes/Pancakes.md", pan.replace("two eggs and milk.", "two eggs and oat milk.").replace(
+        "![](../Attachments", "Rest the batter for [Waffles](Waffles.md) ten minutes.\n\n![](../Attachments"), collab)
+    note("Notes/Waffles.md", read(os.path.join(collab, "Notes", "Waffles.md")).replace(
+        "Like [Pancakes](Pancakes.md).", "Like [Pancakes](Pancakes.md), but crisper."), collab)
+    os.remove(os.path.join(collab, "References", "Flour.md"))
+    note("Notes/Syrup.md", '---\ncategories:\n  - "[[Recipes]]"\ncreated: 2026-10-12\ntopics: []\n---\n\nMaple.\n',
+         collab)
+    for args in (["add", "-A"], ["commit", "-q", "-m", "Edits from a friend"], ["push", "-q"]):
+        run([git, "-C", collab] + args, env=env)
+    note("Notes/Waffles.md", waffles.replace("Like [[Pancakes]].", "Like [[Pancakes]], only thinner."))
+    before = files_in(recipes)
+    code, out = beds_py("push", "recipes")
+    check("beds: push refuses while the bed has commits not yet pulled",
+          code != 0 and "not yet pulled" in out and files_in(recipes) == before, out)
+    code, out = beds_py("pull", "recipes")
+    brain_pan, brain_waffles = read(os.path.join(vault, "Notes", "Pancakes.md")), read(os.path.join(vault, "Notes", "Waffles.md"))
+    check("beds: pull brings a bed edit back, stripped properties and dropped topics put back, links as [[links]]",
+          code == 0 and "Mix [[Flour]] with two eggs and oat milk." in brain_pan
+          and "Rest the batter for [[Waffles]] ten minutes." in brain_pan
+          and "never like [[Secret plan]]. Ask [[Bob Smith]]." in brain_pan and "![[pancakes.png]]" in brain_pan
+          and 'source: "Acme Corp card"' in brain_pan and '  - "[[Health]]"' in brain_pan and "](" not in brain_pan,
+          out + brain_pan)
+    check("beds: an edit on both sides is reported as a conflict and applied to neither",
+          re.search(r"CONFLICT\s+Notes/Waffles\.md", out) is not None and "only thinner" in brain_waffles
+          and "crisper" not in brain_waffles and "crisper" in read(os.path.join(recipes, "Notes", "Waffles.md")), out)
+    check("beds: a deletion and a new note in the bed are reported, not applied",
+          re.search(r"DELETED\s+References/Flour\.md", out) is not None
+          and re.search(r"NEW\s+Notes/Syrup\.md", out) is not None
+          and os.path.exists(os.path.join(vault, "References", "Flour.md"))
+          and not os.path.exists(os.path.join(vault, "Notes", "Syrup.md")), out)
+    code, out = beds_py("push", "recipes")
+    code2, out2 = beds_py("push", "recipes", "--force")
+    check("beds: push refuses over the reported conflict and deletion until forced, and --force sends the brain's",
+          code != 0 and "Notes/Waffles.md" in out and "References/Flour.md" in out and code2 == 0
+          and "only thinner" in read(os.path.join(recipes, "Notes", "Waffles.md"))
+          and os.path.exists(os.path.join(recipes, "References", "Flour.md"))
+          and run([git, "-C", bare, "rev-parse", "HEAD"], env=env)[1] == run([git, "-C", recipes, "rev-parse", "HEAD"], env=env)[1],
+          out + out2)
+
+    note("Notes/Compost.md", read(os.path.join(garden, "Notes", "Compost.md")).replace(
+        "Turn it weekly.", "Turn it weekly, and water it."), garden)
+    run([git, "-C", garden, "commit", "-q", "-am", "Water it"], env=env)
+    code, out = beds_py("push", "garden")
+    before = files_in(vault)
+    code2, out2 = beds_py("pull", "garden", "--dry-run")
+    check("beds: a commit in a bed with no remote stops the push; pull --dry-run reports it and writes nothing",
+          code != 0 and "not yet pulled" in out and code2 == 0 and "Notes/Compost.md" in out2
+          and files_in(vault) == before, out + out2)
+    code, out = beds_py("pull", "garden")
+    compost = read(os.path.join(vault, "Notes", "Compost.md"))
+    code2, out2 = beds_py("push", "garden")
+    check("beds: pull applies it, `beds` put back, and the next push goes through",
+          code == 0 and "water it" in compost and "beds: [garden]" in compost and code2 == 0, out + compost + out2)
+
+    shutil.move(recipes, recipes + "-old")
+    code, out = beds_py("clone")
+    check("beds: clone fetches a configured bed from its remote (a local bare repo) as a sibling",
+          code == 0 and read(os.path.join(recipes, ".bed.json")) and os.path.exists(os.path.join(recipes, "Notes", "Pancakes.md"))
+          and "garden: no remote" in out, out)
+    run([git, "-C", vault, "init", "-q"], env=env)
+    ignored = {p: run([git, "-C", vault, "check-ignore", "-q", p], env=env)[0] == 0
+               for p in ("bin/never-share.txt", ".paths/beds/recipes.json")}
+    check("beds: bin/never-share.txt is git-ignored, the sync state in .paths/beds/ is not",
+          ignored == {"bin/never-share.txt": True, ".paths/beds/recipes.json": False}, str(ignored))
+
+
 def main():
     for root, _, files in os.walk(ROOT):
         if "/.git" in root:
@@ -867,6 +1115,7 @@ def main():
         vault_import(tmp)
         budgets(tmp)
         hubs(tmp)
+        beds(tmp)
         plugins(tmp)
     recipe_guard()
 
