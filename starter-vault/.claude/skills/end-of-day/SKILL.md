@@ -25,7 +25,7 @@ If today's daily note does not exist and nothing else happened, say so and stop.
 ## 2. Find what was learned
 
 A learning is one of these, and it names the folder it would go in (see the kinds table in
-`CLAUDE.md`):
+`Rules.md`):
 
 - **A claim or idea** worth keeping: how something works, a decision and its reason, an insight.
   Titled as the claim, `status: draft` if the kind has a status.
@@ -39,8 +39,8 @@ A learning is one of these, and it names the folder it would go in (see the kind
   is Green next time. A Red item the owner did by hand is worth one question: how did you do
   it?
 
-Before proposing a new note, grep the filenames for its key noun and show near matches: a
-second note about the same thing is an edit to the first.
+Before proposing a new note, look it up with the one recipe in `CLAUDE.md` and show near
+matches: a second note about the same thing is an edit to the first.
 
 ## 3. Propose as one numbered list, then apply
 
@@ -66,16 +66,18 @@ Set `rewritten:` in its frontmatter to today if it has that property.
 
 ## 5. Check
 
-Run `python3 bin/lint.py`; fix every error, mention the warnings.
+Run `python3 bin/lint.py`; fix every error, mention the warnings. Then refresh the footsteps
+quietly with `python3 bin/paths.py`: it writes only `.paths/ledger.json` and `.paths/report.md`,
+so say nothing about it unless it fails.
 
 ## 6. Improve the process
 
 The garden learns from itself: besides what the owner learned, ask how the system did today.
 Look for: a note that had no obvious home, the same kind of action in the log
 three days running (a candidate for a note or a script), a topic that has grown too broad, a source that
-brought in noise, a rule in `CLAUDE.md` or a skill that was broken or worked around, a step of
+brought in noise, a rule in `CLAUDE.md`, `Rules.md` or a skill that was broken or worked around, a step of
 this loop that was slow or skipped. Propose the smallest change that would fix it (a topic
-page, a property, a Base view, a tweak to a skill or to `CLAUDE.md`, a `Sources.md` cadence),
+page, a property, a Base view, a tweak to a skill, `CLAUDE.md` or `Rules.md`, a `Sources.md` cadence),
 as one more numbered item. Applied changes get a dated line in `Decisions.md`.
 
 How hard to look depends on the garden's age (the first dated entry in `Decisions.md`):

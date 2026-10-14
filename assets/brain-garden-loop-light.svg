@@ -133,8 +133,6 @@
 <path d="M 0 0 C 8 0 8 -11 18 -11" stroke-width="2.4" stroke-dasharray="0.1 5"/>
 </g>
 <text x="692" y="800" font-size="16" font-weight="700" fill="#2D372C">Desire paths</text>
-<rect x="800" y="785" width="100" height="20" rx="10" fill="#F1E6D2"/>
-<text x="850" y="799" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.2" fill="#8C5E3C">COMING SOON</text>
-<text font-size="14" fill="#5B6657"><tspan x="692" y="822">busy routes grow stronger,</tspan><tspan x="692" y="842">quiet ones get pruned</tspan></text>
+<text font-size="14" fill="#5B6657"><tspan x="692" y="822">busy routes get paved,</tspan><tspan x="692" y="842">lost turns get signposts</tspan></text>
 </g>
 </svg>

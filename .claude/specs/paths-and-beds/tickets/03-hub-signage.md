@@ -4,10 +4,12 @@
 
 **Blocked by:** 02 (Budgets and the CLAUDE.md split), since it writes into `Rules.md`
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A planted vault's Home and topic template carry `## Start here` above the embeds
-- [ ] A topic page made by the librarian or by ingest has the heading
-- [ ] Lint warns on a topic with three notes and no plain link outside embeds, stays silent on one with a link, on one with fewer than three notes, and on Home until three topic pages exist
-- [ ] `Rules.md` and the template `Readme.md` describe hub signage in a few lines; starter-vault rebuilt
-- [ ] `tools/check.py` green under both Pythons with the lint cases above; no dashes; nothing personal
+- [x] A planted vault's Home and topic template carry `## Start here` above the embeds
+- [x] A topic page made by the librarian or by ingest has the heading
+- [x] Lint warns on a topic with three notes and no plain link outside embeds, stays silent on one with a link, on one with fewer than three notes, and on Home until three topic pages exist
+- [x] `Rules.md` and the template `Readme.md` describe hub signage in a few lines; starter-vault rebuilt
+- [x] `tools/check.py` green under both Pythons with the lint cases above; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged 7cf7281, review fixes 61db9d5 (Start here matched in any case and heading level). Home's check counts only links to topic pages.

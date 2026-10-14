@@ -1,7 +1,22 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 bin/paths.py due --hook"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(python3 bin/lint.py:*)",
+      "Bash(python3 bin/find.py:*)",
+      "Bash(python3 bin/paths.py:*)",
       "Bash(python3 bin/ingest.py:*)"
     ]
   }

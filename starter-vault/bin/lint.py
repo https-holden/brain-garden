@@ -12,13 +12,26 @@ Errors (exit 1):
 Warnings (exit 0):
   - a draft older than draft_max_days
   - a Categories/ page that no note uses
+  - a hub with no signs: a Categories/ page whose topic three or more notes use
+    and that has no plain [[link]] (an embed does not count), or Home.md, once
+    there are three topic pages, with no topic page linked under `## Start here`
   - a Now.md bullet with no date, or one older than now_max_days
   - an action log line (a bullet under `## Actions`) that does not start with
     `YYYY-MM-DD HH:MM` or is missing `Why:` or `Asked by:`
+  - a file a session loads without asking (CLAUDE.md, Me.md, Now.md, each
+    .claude/skills/*/SKILL.md) or Rules.md over its budget, in characters, under
+    `budgets` in bin/vault.json. `SKILL.md` there is every skill's budget; a
+    vault-relative path such as `.claude/skills/pdf/SKILL.md` overrides it for
+    that file only. A file that does not exist is skipped.
+Fixed, never an error:
+  - .paths/index.txt (the index bin/find.py reads) is rebuilt and rewritten when
+    its content is not what the notes say, with one line saying so. Content, not
+    file times, because a clone or a pull resets those.
 
 The schema is the templates: Templates/<Kind> Template.md says which properties a
 kind carries, so a template edit is a schema edit. bin/vault.json maps each kind
-folder to its template and, where it has one, its status vocabulary.
+folder to its template and, where it has one, its status vocabulary, and holds
+the budgets.
 """
 from __future__ import annotations
 
@@ -28,14 +41,22 @@ import re
 import sys
 from datetime import date, datetime
 
+sys.dont_write_bytecode = True  # no __pycache__ in the vault's bin/
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import find  # noqa: E402
+
 VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = json.load(open(os.path.join(VAULT, "bin", "vault.json"), encoding="utf-8"))
 KINDS = CONFIG["kinds"]
-SKIP = {".git", ".obsidian", ".trash", ".claude", "bin", "node_modules", "__pycache__"}
+SKIP = {".git", ".obsidian", ".trash", ".claude", ".paths", "bin", "node_modules", "__pycache__"}
 LINK = re.compile(r"\[\[([^\]|#]+)")
+PLAIN = re.compile(r"(?<!!)\[\[([^\]|#]+)")  # a link, not an embed
+BUSY = 3  # notes on a topic, or topic pages in the vault, before its hub needs a sign
 DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
 DASHES = ("–", "—")
+# The one place the over-budget warning is worded.
+OVER_BUDGET = "{file}: {size:,} chars, over its budget of {budget:,}: say tend to compact it to about {target:,} (75%)"
 
 errors, warnings = [], []
 
@@ -67,6 +88,53 @@ def walk():
 
 def exempt(rel):
     return any(rel.startswith(p) for p in CONFIG.get("dash_exempt", []))
+
+
+def over_budget():
+    """One warning per budgeted file that is over its budget in bin/vault.json."""
+    table = {}
+    for rel, n in (CONFIG.get("budgets") or {}).items():
+        try:
+            table[os.path.normpath(rel.replace("\\", "/")).replace(os.sep, "/")] = int(n)
+        except (TypeError, ValueError):
+            pass  # a hand-edited budget that is not a number is ignored, never an error
+    limits = {rel: n for rel, n in table.items() if rel != "SKILL.md"}
+    skills = os.path.join(VAULT, ".claude", "skills")
+    if "SKILL.md" in table and os.path.isdir(skills):
+        for name in sorted(os.listdir(skills)):
+            limits.setdefault(".claude/skills/%s/SKILL.md" % name, table["SKILL.md"])
+    out = []
+    for rel, budget in sorted(limits.items()):
+        path = os.path.join(VAULT, *rel.split("/"))
+        if os.path.isfile(path):
+            size = len(open(path, encoding="utf-8", errors="replace").read())
+            if size > budget:
+                out.append(OVER_BUDGET.format(file=rel, size=size, budget=budget, target=budget * 3 // 4))
+    return out
+
+
+def unsigned_hubs(notes):
+    """A busy hub with no plain link: a topic page whose topic BUSY notes use, and
+    Home once the vault has BUSY topic pages (its links to root documents do not count)."""
+    pages = {os.path.splitext(os.path.basename(r))[0]: r for r in notes if r.startswith("Categories/")}
+    count = {}
+    for rel, (fm, _, _) in notes.items():
+        if not rel.startswith("Templates/"):
+            for topic in {t.strip() for t in LINK.findall(fm.get("categories", ""))}:
+                count[topic] = count.get(topic, 0) + 1
+    out = []
+    for topic, rel in sorted(pages.items()):
+        if count.get(topic, 0) >= BUSY and not PLAIN.search(notes[rel][1]):
+            out.append("%s: %d notes use this topic and its page links none: put the best 3 to 7 under "
+                       "## Start here" % (rel, count[topic]))
+    if "Home.md" in notes and len(pages) >= BUSY:
+        section = re.split(r"\n#{2,6} *start here[ \t]*\n", "\n" + notes["Home.md"][1], maxsplit=1, flags=re.I)
+        section = re.split(r"\n#{1,2} ", section[1], maxsplit=1)[0] if len(section) > 1 else ""
+        names = {p.lower() for p in pages}
+        if not any(os.path.basename(t.strip()).lower() in names for t in PLAIN.findall(section)):
+            out.append("Home.md: %d topic pages and none linked under ## Start here: add the main ones "
+                       "there as plain links" % len(pages))
+    return out
 
 
 def main():
@@ -124,6 +192,7 @@ def main():
 
     for topic in sorted(topics - used):
         warnings.append("Categories/%s.md: no note uses this topic" % topic)
+    warnings.extend(unsigned_hubs(notes))
 
     if "Now.md" in notes:
         section = ""
@@ -137,6 +206,10 @@ def main():
                 elif (today - datetime.strptime(found[-1], "%Y-%m-%d").date()).days > CONFIG.get("now_max_days", 14):
                     warnings.append("Now.md: stale bullet under %s (%s): %s" % (section, found[-1], line[2:50]))
 
+    warnings.extend(over_budget())
+
+    if find.rebuild(VAULT):
+        print("index  .paths/index.txt was out of date: rewrote it from the notes (commit it with them)")
     for w in warnings:
         print("warn   %s" % w)
     for e in errors:

@@ -4,14 +4,16 @@
 
 **Blocked by:** 02 (Budgets and the CLAUDE.md split)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] With no bed configured every command says so and writes nothing
-- [ ] Two beds configured in a planted vault: push sends exactly the notes tagged for each bed or in an included topic, plus their attachments, and never a daily note, a person or a root document, whatever its tags
-- [ ] An outgoing note has the configured properties stripped, links converted (in-bed links resolve as relative paths, out-of-bed links are plain text), and each bed topic page lists its notes between markers
-- [ ] The bed opens as a vault: its lint passes and its find tool works; the paths script and the nudge are silent there
-- [ ] A word from `never-share.txt` in an outgoing note stops the push and names the note; `--dry-run` writes nothing
-- [ ] An edit made in the bed comes back with pull, properties re-inserted and links converted back; an edit on both sides is reported as a conflict and applied to neither; a deletion is reported, not applied; push refuses over unpulled bed commits unless forced
-- [ ] `clone` fetches a configured bed from a local bare repo standing in for a remote
-- [ ] The sharing guide, "how it works", README and the template `Rules.md` describe beds; starter-vault rebuilt
-- [ ] `tools/check.py` green under both Pythons; every git call in the checks strips `GIT_` variables; no dashes; nothing personal
+- [x] With no bed configured every command says so and writes nothing
+- [x] Two beds configured in a planted vault: push sends exactly the notes tagged for each bed or in an included topic, plus their attachments, and never a daily note, a person or a root document, whatever its tags
+- [x] An outgoing note has the configured properties stripped, links converted (in-bed links resolve as relative paths, out-of-bed links are plain text), and each bed topic page lists its notes between markers
+- [x] The bed opens as a vault: its lint passes and its find tool works; the paths script and the nudge are silent there
+- [x] A word from `never-share.txt` in an outgoing note stops the push and names the note; `--dry-run` writes nothing
+- [x] An edit made in the bed comes back with pull, properties re-inserted and links converted back; an edit on both sides is reported as a conflict and applied to neither; a deletion is reported, not applied; push refuses over unpulled bed commits unless forced
+- [x] `clone` fetches a configured bed from a local bare repo standing in for a remote
+- [x] The sharing guide, "how it works", README and the template `Rules.md` describe beds; starter-vault rebuilt
+- [x] `tools/check.py` green under both Pythons; every git call in the checks strips `GIT_` variables; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged 059f4ff, hardening 9908525. Two review rounds: symlinks never followed, nothing from the bed is executed, frontmatter links and file names checked for leaks, bed path must be outside the brain, pull never changes bed membership. Deviation accepted: `categories` stays as `[[Topic]]` in the bed (only the bed's own topics). Unverified: real GitHub remotes, Windows.

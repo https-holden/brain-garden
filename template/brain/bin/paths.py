@@ -1,0 +1,912 @@
+#!/usr/bin/env python3
+"""Footsteps: where the AI walks in this vault, as a ledger and a one-screen report. Standard library only.
+
+    python3 bin/paths.py                     refresh the ledger and the report (mode `refresh`)
+    python3 bin/paths.py --pass              refresh, record today as the last pass of `tend`,
+                                             and save the report as .paths/reports/YYYY-MM-DD.md
+    python3 bin/paths.py --paved NOTE        refresh, and record NOTE (a vault-relative path,
+                                             repeatable) as paved today
+    python3 bin/paths.py due                 the nudge: one line when `tend` is due, else nothing
+    python3 bin/paths.py --today YYYY-MM-DD  as if today were that date
+    python3 bin/paths.py --transcripts DIR   also read the Claude Code transcripts in DIR (repeatable)
+
+A refresh writes two files and nothing else, both kept on this machine
+(git-ignored): .paths/ledger.json, every footstep so far, and .paths/report.md,
+the report. A pass also saves the report as .paths/reports/YYYY-MM-DD.md, which
+git tracks, so month-over-month change is a diff. The last pass is the later of
+the ledger's and the newest of those dated reports, so a fresh clone or a
+second machine knows it too. It never creates, edits or moves a note and writes
+no frontmatter. In a bed checkout (.bed.json at the
+vault root) it prints nothing and exits, whatever the mode.
+
+`due` reads only the ledger, the dated report names and file sizes, and writes
+nothing. Its one line
+names every reason that applies: the last refresh is more than 7 days old; the
+last pass is more than 30 days old, or there has been none and the first
+refresh is more than 30 days old; a file a session loads without asking is
+over its budget in bin/vault.json (the rule lint warns on). With no ledger,
+only the budget reason applies. The Claude Code SessionStart hook and the
+`start-of-day` skill run it.
+
+A paved note (Pave in `tend`: checked, shortened, linked from its topic's
+"Start here") is never again listed under drafts wanting paving. It is listed
+under "Paved, waiting for your verify" from the day after the pave until a pass
+lists it, which marks it asked, so the owner is asked once. The list shows ten
+at a time; the rest wait for the next pass.
+
+A footstep is one read, write or lookup hit of a vault file. The sources, each
+optional, are named at the top of the report:
+
+- Claude Code transcripts (reads and writes): every .jsonl file under
+  <config folder>/projects/<slug>/, where the slug is the vault's path with
+  each character that is not a letter or a digit turned into "-". The main
+  checkout's path counts too when the vault is a git worktree, and so does
+  the repo's top folder when the vault is a folder inside a bigger repo
+  (Claude Code runs there; only footsteps inside the vault count, and a
+  session that never steps into the vault is left out). The config folders
+  are $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-* that has a
+  projects/ folder. Subagent transcripts count with their parent session.
+- The find log, .paths/find.log: each path a query matched is a footstep of
+  kind `find`; a query with no hits is a miss.
+- The git log, when the vault is a repo: each file a commit touched is a
+  footstep of kind `git`.
+
+What counts in a transcript: the path given to Read, Edit or Write; a vault
+path in a Bash command (a folder is one footstep on the folder; the target of
+sed -i, >, >> or tee is a write; a script it runs, as in python3 bin/find.py,
+is not a read); each file named on a line of grep output, context lines too,
+or in a Grep's full list of files when the output shown was cut short; the
+folder a Glob lists; an @-mentioned file; the SKILL.md of a skill called by
+the Skill tool or by a slash command; and CLAUDE.md, which Claude Code loads
+once per session, plus any nested CLAUDE.md it loads. Absolute and
+vault-relative paths are the same file, only files that exist now count, a
+session counts each file once per kind, and a footstep is dated on this
+computer's clock, like --today, the find log and the git log.
+
+A session's type is its first skill or slash command, by name, else `misc`.
+Its first useful action is its first write to a vault file or its first MCP
+call. Its fixed load is the chars of the distinct vault files it read whole
+before that (Read, cat and the like, skills, CLAUDE.md; not grep hits or
+folder listings).
+
+Hot: three or more reads (sessions and find hits) in 30 days. Dormant: no read
+in 60 days, or never read. Writes (transcripts and git) never make a file hot.
+A transcript is read again only when its time or size changed; the find log
+and the git log are read whole on every refresh.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import unicodedata
+
+sys.dont_write_bytecode = True  # no __pycache__ in the vault's bin/
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import find  # noqa: E402
+
+VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LEDGER = os.path.join(".paths", "ledger.json")
+REPORT = os.path.join(".paths", "report.md")
+REPORTS = os.path.join(".paths", "reports")  # one dated copy per pass, committed
+HOT_DAYS, HOT_READS, DORMANT_DAYS, TOP_HOT, TOP_LIST, TOP_TYPES = 30, 3, 60, 20, 10, 8
+REFRESH_DAYS, PASS_DAYS = 7, 30  # due mode: older than this, tending is due
+READS = ("read", "find")  # the kinds that make a file hot; write and git never do
+# Claude Code's own slash commands (and their aliases) never type a session; any other one does, by
+# name. Only the common ones: a rarer built-in at the start of a session just names its type.
+BUILT_IN = {"add-dir", "agents", "clear", "compact", "config", "context", "cost", "doctor", "effort", "exit",
+            "export", "fast", "help", "hooks", "ide", "init", "login", "logout", "mcp", "memory", "model",
+            "output-style", "permissions", "plugin", "rename", "resume", "review", "rewind", "statusline",
+            "status", "theme", "todos", "usage", "vim",
+            "new", "reset", "quit", "settings"}  # aliases of clear, clear, exit and config
+WRITERS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+READERS = {"cat", "head", "tail", "less", "more", "bat"}  # Bash commands that read a file whole
+GREPS = {"grep", "egrep", "fgrep", "rg", "ag"}
+RUNNERS = re.compile(r"^(python[0-9.]*|sh|bash|zsh|node|ruby|perl)$")  # their first argument is a script
+CONTROL = {"|", "||", "&&", ";", ";;", "&", "|&", "(", ")"}
+REDIRECT = {">", ">>", ">|", "&>", "&>>"}
+COMMAND = re.compile(r"<command-name>/?([^<\s]+)</command-name>")
+NOT_NOTES = {"bin", "Templates"}
+
+
+def slug(path):
+    """The folder name Claude Code gives a project: every character but a letter or a digit is "-"."""
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
+def git(vault, *args):
+    """git's output, or None when it fails. Never inherits GIT_* (a hook's GIT_DIR points elsewhere)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        res = subprocess.run(["git", "-C", vault, "-c", "core.quotepath=off"] + list(args), capture_output=True,
+                             env=env, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return res.stdout.decode("utf-8", "replace") if res.returncode == 0 else None
+
+
+def checkouts(vault):
+    """(the vault's folder in every checkout, the repo's top folder in every checkout). The main checkout
+    counts too when the vault is in a git worktree. The top folder is where Claude Code runs when the
+    vault is a folder of a bigger repo, since that is where the builder puts .claude/settings.json."""
+    vaults, tops = [vault], []
+    lines = (git(vault, "rev-parse", "--show-toplevel", "--git-common-dir") or "").split("\n")
+    if len(lines) >= 2 and lines[0] and lines[1]:
+        top = os.path.realpath(lines[0])
+        sub = os.path.relpath(os.path.realpath(vault), top)
+        common = os.path.realpath(os.path.join(vault, lines[1]))
+        if not os.path.isdir(common):
+            common = os.path.realpath(os.path.join(top, lines[1]))
+        main = os.path.dirname(common)
+        tops.append(top)
+        if os.path.basename(common) == ".git" and main != top:
+            vaults.append(os.path.normpath(os.path.join(main, sub)))
+            tops.append(main)
+    return vaults, tops
+
+
+class Vault:
+    """Turns any path a session wrote into a vault-relative one, whichever checkout or symlink it went through."""
+
+    def __init__(self, root):
+        self.root = root
+        self.roots, self.places, self.kinds = [], [], {}
+        vaults, tops = checkouts(root)
+        for r in vaults + tops:
+            for form in (os.path.abspath(r), os.path.realpath(r)):
+                if r in vaults and form not in self.roots:
+                    self.roots.append(form)  # paths resolve against these
+                if form not in self.places:
+                    self.places.append(form)  # Claude Code projects named after these hold the transcripts
+
+    def near(self, cwd):
+        """'in' when a session's folder is the vault or inside it, 'above' when it holds the vault, else None."""
+        if self.rel(cwd) is not None:
+            return "in"
+        for cand in (os.path.normpath(cwd), os.path.realpath(cwd)):
+            if any(r.startswith(cand.rstrip(os.sep) + os.sep) for r in self.roots):
+                return "above"
+        return None
+
+    def rel(self, path, cwd=None):
+        """'Notes/X.md' for a path inside the vault ('' for the root), None for one outside it."""
+        if not isinstance(path, str) or not path or "\0" in path:
+            return None
+        full = os.path.normpath(os.path.join(cwd or self.root, os.path.expanduser(path)))
+        for cand in (full, os.path.realpath(full)):
+            for r in self.roots:
+                if cand == r:
+                    return ""
+                if cand.startswith(r + os.sep):
+                    return unicodedata.normalize("NFC", cand[len(r) + 1:].replace(os.sep, "/"))
+        return None
+
+    def kind(self, rel):
+        """'file', 'dir' or None (missing, the root, or inside .git)."""
+        if not rel or rel == ".git" or rel.startswith(".git/"):
+            return None
+        if rel not in self.kinds:
+            path = os.path.join(self.root, *rel.rstrip("/").split("/"))
+            self.kinds[rel] = "dir" if os.path.isdir(path) else "file" if os.path.isfile(path) else None
+        return self.kinds[rel]
+
+    def size(self, rel):
+        with open(os.path.join(self.root, *rel.split("/")), encoding="utf-8", errors="replace") as fh:
+            return len(fh.read())
+
+
+# ------------------------------------------------------------ transcripts
+
+
+def config_dirs():
+    home = os.path.expanduser("~")
+    dirs = [os.path.expanduser(os.environ["CLAUDE_CONFIG_DIR"])] if os.environ.get("CLAUDE_CONFIG_DIR") else []
+    dirs.append(os.path.join(home, ".claude"))
+    try:
+        names = sorted(os.listdir(home))
+    except OSError:
+        names = []
+    dirs += [os.path.join(home, n) for n in names
+             if n.startswith(".claude-") and os.path.isdir(os.path.join(home, n, "projects"))]
+    seen, out = set(), []
+    for d in dirs:
+        if os.path.realpath(d) not in seen:
+            seen.add(os.path.realpath(d))
+            out.append(d)
+    return out
+
+
+def shown(path):
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+
+
+def transcript_files(vault, extra):
+    """(the folders transcripts were found in, as shown in the report; every transcript file)."""
+    slugs = []
+    for r in vault.places:
+        if slug(r) not in slugs:
+            slugs.append(slug(r))
+    found, files = [], []
+    places = [(d, [os.path.join(d, "projects", s) for s in slugs]) for d in config_dirs()]
+    places += [(d, [d]) for d in extra]
+    for label, dirs in places:
+        hit = False
+        for d in dirs:
+            if os.path.isdir(d):
+                hit = True
+                for root, subdirs, names in os.walk(d):
+                    subdirs.sort()
+                    files += [os.path.join(root, n) for n in sorted(names) if n.endswith(".jsonl")]
+        if hit:
+            found.append(shown(label))
+    return found, sorted(set(files))
+
+
+def records(path):
+    out = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+    return out
+
+
+def session_of(recs, path):
+    for rec in recs:
+        if isinstance(rec.get("sessionId"), str) and rec["sessionId"]:
+            return rec["sessionId"]
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b["text"] for b in content if isinstance(b, dict) and isinstance(b.get("text"), str))
+    return ""
+
+
+def bash_paths(command):
+    """(read paths, whole-file read paths, written paths, is a grep) named in one Bash command."""
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        tokens = command.split()
+    reads, whole, writes, grep, words = [], [], [], False, []
+    for tok in tokens + [";"]:
+        if tok not in CONTROL:
+            words.append(tok)
+            continue
+        plain, i = [], 0
+        while i < len(words):
+            w = words[i]
+            if w in REDIRECT and i + 1 < len(words):
+                writes.append(words[i + 1])
+                i += 2
+            elif w in (">&", "<<", "<<<"):
+                i += 2
+            else:
+                plain.append(w)
+                i += 1
+        k = 0
+        while k < len(plain) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", plain[k]):
+            k += 1
+        cmd, args = (os.path.basename(plain[k]), plain[k + 1:]) if k < len(plain) else ("", [])
+        grep = grep or cmd in GREPS or (cmd == "git" and args[:1] == ["grep"])
+        if RUNNERS.match(cmd):  # running a script (python3 bin/find.py) is not reading it
+            script = next((i for i, a in enumerate(args) if not a.startswith("-")), None)
+            args = args[:script] + args[script + 1:] if script is not None else args
+        if cmd == "tee":
+            writes += [a for a in args if not a.startswith("-")]
+        elif cmd == "sed" and any(a.startswith("-i") or a.startswith("--in-place") for a in args):
+            writes += [a for a in args if not a.startswith("-")]
+        else:
+            reads += args  # never the command itself: running bin/lint.py is not reading it
+            whole += args if cmd in READERS else []
+        words = []
+    return reads, whole, writes, grep
+
+
+def local_day(stamp):
+    """The local date, YYYY-MM-DD, of a transcript time (Claude Code writes them in UTC), like --today."""
+    text = str(stamp or "")
+    try:
+        when = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text[:10]
+    return (when.astimezone() if when.tzinfo else when).date().isoformat()
+
+
+def session(recs, vault):
+    """One session's footsteps, type and fixed load, from its records in time order. None if it has no
+    turns, or if it ran in a folder that holds the vault and never stepped into it."""
+    out = {"date": "", "type": "misc", "fixed_load": None, "read": {}, "write": {}}
+    state = {"typed": False, "useful": False, "harness": False, "turns": 0, "inside": False}
+    loaded, greps, nears = set(), {}, {}
+
+    def step(kind, rel, day, whole=False, enters=True):
+        what = vault.kind(rel)
+        if what is None or (what == "dir" and kind != "read"):
+            return
+        key = rel.rstrip("/") + ("/" if what == "dir" else "")
+        out[kind].setdefault(key, day)
+        state["inside"] = state["inside"] or enters
+        if whole and what == "file" and not state["useful"]:
+            loaded.add(key)
+
+    def write(rel, day):
+        if rel:  # a write into the vault, even to a file gone since, is the first useful action
+            state["useful"] = state["inside"] = True
+            step("write", rel, day)
+
+    def skill(name, day, slash):
+        name = name.strip().lstrip("/")
+        if not name or (slash and name in BUILT_IN):
+            return
+        if not state["typed"]:
+            state["typed"], out["type"] = True, name
+        if re.match(r"^[\w.-]+$", name):
+            step("read", ".claude/skills/%s/SKILL.md" % name, day, whole=True)
+
+    for rec in recs:
+        kind = rec.get("type")
+        if kind not in ("user", "assistant", "attachment"):
+            continue
+        day = local_day(rec.get("timestamp"))
+        out["date"] = out["date"] or day
+        cwd = rec.get("cwd") if isinstance(rec.get("cwd"), str) else None
+        if cwd:
+            if cwd not in nears:
+                nears[cwd] = vault.near(cwd)
+            state["inside"] = state["inside"] or nears[cwd] == "in"
+            if nears[cwd] and not state["harness"]:  # Claude Code loads the vault's CLAUDE.md at the start
+                state["harness"] = True
+                step("read", "CLAUDE.md", day, whole=True, enters=False)
+        if kind == "attachment":  # an @-mentioned file, or a nested CLAUDE.md Claude Code loaded
+            att = rec.get("attachment") if isinstance(rec.get("attachment"), dict) else {}
+            where = next((att[k] for k in ("path", "filename", "file_path") if isinstance(att.get(k), str)), None)
+            if att.get("type") in ("file", "nested_memory"):
+                step("read", vault.rel(where, cwd), day, whole=True)
+            continue
+        state["turns"] += 1
+        message = rec.get("message") if isinstance(rec.get("message"), dict) else {}
+        content = message.get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
+        for b in blocks if isinstance(blocks, list) else []:
+            if not isinstance(b, dict):
+                continue
+            if kind == "user" and b.get("type") == "text":
+                m = COMMAND.search(str(b.get("text") or ""))
+                if m:
+                    skill(m.group(1), day, slash=True)
+            elif kind == "user" and b.get("type") == "tool_result" and b.get("tool_use_id") in greps:
+                base = greps[b.get("tool_use_id")]
+                for line in text_of(b.get("content")).split("\n"):
+                    step("read", grep_hit(vault, line, base), day)
+                full = rec.get("toolUseResult") if isinstance(rec.get("toolUseResult"), dict) else {}
+                for name in full.get("filenames") or [] if isinstance(full.get("filenames"), list) else []:
+                    step("read", vault.rel(name, base), day)  # every hit, when the result shown was cut short
+            elif kind == "assistant" and b.get("type") == "tool_use":
+                name, args = str(b.get("name") or ""), b.get("input") if isinstance(b.get("input"), dict) else {}
+                if name.startswith("mcp__"):
+                    state["useful"] = True
+                elif name == "Skill":
+                    skill(str(args.get("skill") or args.get("command") or ""), day, slash=False)
+                elif name == "Read":
+                    step("read", vault.rel(args.get("file_path"), cwd), day, whole=True)
+                elif name in WRITERS:
+                    write(vault.rel(args.get("file_path") or args.get("notebook_path"), cwd), day)
+                elif name == "Bash" and isinstance(args.get("command"), str):
+                    reads, whole, writes, grep = bash_paths(args["command"])
+                    for tok in reads:
+                        step("read", vault.rel(tok, cwd), day, whole=tok in whole)
+                    for tok in writes:
+                        write(vault.rel(tok, cwd), day)
+                    if grep:
+                        greps[b.get("id")] = cwd
+                elif name == "Grep":
+                    greps[b.get("id")] = cwd
+                elif name in ("Glob", "LS"):  # one footstep on the folder listed: path, then the pattern's
+                    pattern = str(args.get("pattern") or "") if name == "Glob" else ""
+                    literal = []
+                    for part in pattern.split("/")[:-1]:  # folders up to the first wildcard
+                        if any(c in part for c in "*?[{"):
+                            break
+                        literal.append(part)
+                    prefix = "/".join(literal) or ("/" if pattern.startswith("/") else "")
+                    folder = vault.rel(os.path.join(str(args.get("path") or cwd or vault.root), prefix), cwd)
+                    if vault.kind(folder) == "dir":
+                        step("read", folder, day)
+    if not state["turns"] or not state["inside"]:
+        return None
+    if state["useful"]:
+        out["fixed_load"] = sum(vault.size(rel) for rel in loaded if vault.kind(rel) == "file")
+    return out
+
+
+def grep_hit(vault, line, cwd):
+    """The vault file a line of grep output names, or None: path, path:N:text or path:text for a match,
+    path-N-text or path-text for a context line (-A, -B, -C)."""
+    line = line.strip()
+    if not line or len(line) > 4096:
+        return None
+    for cand in [line] + [line[:m.start()] for m in re.finditer(r"[:-]", line)][:20]:
+        rel = vault.rel(cand, cwd)
+        if vault.kind(rel) == "file":
+            return rel
+    return None
+
+
+# ------------------------------------------------------------ the other sources
+
+
+def find_log(root):
+    """[(date, query, matched paths)] from .paths/find.log, or None when there is no log."""
+    path = os.path.join(root, ".paths", "find.log")
+    if not os.path.exists(path):
+        return None
+    out = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) >= 3 and re.match(r"^\d{4}-\d{2}-\d{2}", fields[0]):
+                out.append((fields[0][:10], " ".join(fields[1].lower().split()),
+                            [unicodedata.normalize("NFC", p) for p in fields[3:] if p]))
+    return out
+
+
+def git_log(root):
+    """[(date, paths touched)], one per commit, or None when the vault is not a repo with commits."""
+    text = git(root, "log", "--no-renames", "--relative", "--name-only", "--date=short-local", "--format=%x01%cd")
+    if text is None:
+        return None
+    commits = []
+    for line in text.split("\n"):
+        if line.startswith("\x01"):
+            commits.append((line[1:].strip(), []))
+        elif line.strip() and commits:
+            commits[-1][1].append(unicodedata.normalize("NFC", line.strip()))
+    return commits
+
+
+# ------------------------------------------------------------ refresh
+
+
+def within(day, today, days):
+    try:
+        return (today - dt.date.fromisoformat(day)).days < days
+    except (TypeError, ValueError):
+        return False
+
+
+def load(root):
+    try:
+        with open(os.path.join(root, LEDGER), encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def refresh(root, today, extra):
+    """Bring the ledger up to date and write it. (the ledger, transcripts read, transcripts unchanged)."""
+    vault = Vault(root)
+    old = load(root)
+    known = old.get("transcripts") if isinstance(old.get("transcripts"), dict) else {}
+    sessions = old.get("sessions") if isinstance(old.get("sessions"), dict) else {}
+    found, files = transcript_files(vault, extra)
+    fresh, touched = {}, set()
+    for path in files:
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        stamp = [st.st_mtime_ns, st.st_size]
+        if (known.get(path) or {}).get("stamp") != stamp:
+            fresh[path] = records(path)
+            known[path] = {"stamp": stamp, "session": session_of(fresh[path], path)}
+            touched.add(known[path]["session"])
+    opened = len(fresh)
+    for sid in sorted(touched):
+        mine, timeline = sorted(p for p, v in known.items() if v.get("session") == sid and os.path.exists(p)), []
+        for i, path in enumerate(mine):
+            if path not in fresh:
+                fresh[path] = records(path)
+                opened += 1
+            timeline += [(str(r.get("timestamp") or ""), i, n, r) for n, r in enumerate(fresh[path])]
+        timeline.sort(key=lambda t: t[:3])
+        s = session([t[3] for t in timeline], vault)
+        if s is None:
+            sessions.pop(sid, None)
+        else:
+            sessions[sid] = s
+
+    steps = {}
+
+    def add(rel, kind, day):
+        if vault.kind(rel) == ("dir" if rel.endswith("/") else "file"):
+            days = steps.setdefault(rel, {}).setdefault(kind, {})
+            days[day] = days.get(day, 0) + 1
+
+    for s in sessions.values():
+        for kind in ("read", "write"):
+            for rel, day in s[kind].items():
+                add(rel, kind, day)
+    lookups, commits = find_log(root), git_log(root)
+    for day, _, matched in lookups or []:
+        for rel in matched:
+            add(rel, "find", day)
+    for day, touched_paths in commits or []:
+        for rel in touched_paths:
+            add(rel, "git", day)
+
+    types = {}
+    for s in sessions.values():
+        if within(s["date"], today, HOT_DAYS):
+            t = types.setdefault(s["type"], {"sessions": 0, "loads": []})
+            t["sessions"] += 1
+            if s["fixed_load"] is not None:
+                t["loads"].append(s["fixed_load"])
+    types = {k: {"sessions": t["sessions"],
+                 "fixed_load": round(sum(t["loads"]) / len(t["loads"])) if t["loads"] else None}
+             for k, t in types.items()}
+    misses = {}
+    for day, query, matched in lookups or []:
+        if not matched and query and within(day, today, HOT_DAYS):
+            m = misses.setdefault(query, {"misses": 0, "last": ""})
+            m["misses"] += 1
+            m["last"] = max(m["last"], day)
+
+    ledger = {
+        "version": 1, "refreshed": today.isoformat(), "last_pass": last_pass(root, old, today),
+        "first_refresh": old.get("first_refresh") or old.get("refreshed") or today.isoformat(),
+        "paved": paved_of(old),
+        "sources": {"transcripts": found, "sessions": len(sessions),
+                    "find_log": None if lookups is None else len(lookups),
+                    "git": None if commits is None else len(commits)},
+        "transcripts": known, "sessions": sessions, "paths": steps, "types": types,
+        "signposts": {q: m for q, m in misses.items() if m["misses"] >= 2},
+    }
+    save(root, ledger)
+    return ledger, opened, len(files) - len([p for p in files if p in fresh])
+
+
+def last_pass(root, ledger, today):
+    """The later of the ledger's last pass and the newest dated report in .paths/reports/ (not after today):
+    a fresh clone or a second machine has the reports, which git carries, but not the ledger."""
+    days = [ledger.get("last_pass")] if isinstance(ledger.get("last_pass"), str) else []
+    try:
+        names = os.listdir(os.path.join(root, REPORTS))
+    except OSError:
+        names = []
+    for name in names:
+        when = age(name[:10], today) if re.match(r"^\d{4}-\d{2}-\d{2}\.md$", name) else None
+        if when is not None and when >= 0:
+            days.append(name[:10])
+    return max(days) if days else None
+
+
+def save(root, ledger):
+    os.makedirs(os.path.join(root, ".paths"), exist_ok=True)
+    with open(os.path.join(root, LEDGER + ".tmp"), "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(ledger, fh, indent=1, sort_keys=True, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(os.path.join(root, LEDGER + ".tmp"), os.path.join(root, LEDGER))
+
+
+def paved_of(ledger):
+    """{note: {"paved": day, "asked": day or None}} from a ledger, whatever shape an older one kept it in."""
+    raw = ledger.get("paved") if isinstance(ledger.get("paved"), dict) else {}
+    out = {}
+    for rel, v in raw.items():
+        v = {"paved": v} if isinstance(v, str) else v if isinstance(v, dict) else {}
+        if isinstance(v.get("paved"), str):
+            out[rel] = {"paved": v["paved"], "asked": v.get("asked") if isinstance(v.get("asked"), str) else None}
+    return out
+
+
+# ------------------------------------------------------------ report
+
+
+def plural(n, one, many=None):
+    """'1 commit', '2 commits', '2 queries'."""
+    return "%d %s" % (n, one if n == 1 else many or one + "s")
+
+
+def notes(root):
+    """Every note: a .md file outside the dot folders, bin/ and Templates/."""
+    out = []
+    for dirpath, dirs, names in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not (dirpath == root and d in NOT_NOTES))
+        out += [unicodedata.normalize("NFC", os.path.relpath(os.path.join(dirpath, n), root).replace(os.sep, "/"))
+                for n in sorted(names) if n.endswith(".md")]
+    return out
+
+
+def budget_rows(root):
+    """(label, chars, budget) for each file the `budgets` in bin/vault.json name, every skill as one row."""
+    try:
+        with open(os.path.join(root, "bin", "vault.json"), encoding="utf-8") as fh:
+            raw = json.load(fh).get("budgets") or {}
+    except (OSError, ValueError, AttributeError):
+        raw = {}
+    table = {}
+    for rel, n in raw.items() if isinstance(raw, dict) else []:
+        try:
+            table[os.path.normpath(rel.replace("\\", "/")).replace(os.sep, "/")] = int(n)
+        except (TypeError, ValueError):
+            pass  # a hand-edited budget that is not a number is ignored, as lint does
+
+    def size(rel):
+        path = os.path.join(root, *rel.split("/"))
+        if not os.path.isfile(path):
+            return None
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return len(fh.read())
+
+    rows = [(rel, size(rel), n) for rel, n in sorted(table.items()) if rel != "SKILL.md" and size(rel) is not None]
+    skills = os.path.join(root, ".claude", "skills")
+    if "SKILL.md" in table and os.path.isdir(skills):
+        each = [(size(".claude/skills/%s/SKILL.md" % s), s) for s in sorted(os.listdir(skills))
+                if ".claude/skills/%s/SKILL.md" % s not in table]
+        each = [(n, s) for n, s in each if n is not None]
+        if each:
+            n, s = max(each)
+            rows.append(("each SKILL.md (%d), largest %s" % (len(each), s), n, table["SKILL.md"]))
+    return rows
+
+
+def report(root, ledger, today):
+    paths, src = ledger["paths"], ledger["sources"]
+    has_reads = bool(ledger["sessions"]) or bool(src.get("find_log"))
+    named, folders = [], ", ".join(src["transcripts"])
+    if ledger["sessions"]:
+        named.append("Claude Code transcripts in %s (%s)" % (folders or "the ledger",
+                                                            plural(src["sessions"], "session")))
+    elif folders:
+        named.append("Claude Code transcripts in %s (found, no sessions yet)" % folders)
+    if src.get("find_log") is not None:
+        named.append("find log (%s)" % (plural(src["find_log"], "query", "queries") if src["find_log"]
+                                        else "found, empty"))
+    if src.get("git") is not None:
+        named.append("git log (%s)" % plural(src["git"], "commit"))
+    lines = ["# Paths report", "",
+             "Refreshed %s. Ledger started %s. Last pass: %s. Window: %d days (dormant: %d)."
+             % (ledger["refreshed"], ledger["first_refresh"], ledger.get("last_pass") or "never", HOT_DAYS,
+                DORMANT_DAYS),
+             "Sources: %s." % ("; ".join(named) or "none")]
+    if not has_reads:
+        lines.append("Reads not measured: no Claude Code session and no find query yet on this machine.")
+
+    def recent(rel, kinds, days=HOT_DAYS):
+        return sum(n for k in kinds for d, n in paths.get(rel, {}).get(k, {}).items() if within(d, today, days))
+
+    def last(rel, kinds):
+        return max([d for k in kinds for d in paths.get(rel, {}).get(k, {})] or [""])
+
+    hot = sorted(rel for rel in paths if recent(rel, READS) >= HOT_READS)
+    hot.sort(key=lambda r: (recent(r, READS), last(r, READS)), reverse=True)  # most walked, then latest
+    drafts = []
+    for rel in hot:
+        if rel.endswith(".md") and rel not in ledger["paved"]:
+            with open(os.path.join(root, *rel.split("/")), encoding="utf-8", errors="replace") as fh:
+                if find.plain(find.frontmatter(fh.read()).get("status", "")) == "draft":
+                    drafts.append(rel)
+
+    def steps_line(rel, kinds, noun):
+        n, by_find = recent(rel, kinds), recent(rel, ("find",))
+        extra = " (%d by find)" % by_find if by_find and noun == "reads" else ""
+        return "- %s: %s%s, last %s" % (rel, plural(n, noun[:-1]), extra, last(rel, kinds))
+
+    if has_reads:
+        lines += ["", "## Hot: %d or more reads in %d days" % (HOT_READS, HOT_DAYS)]
+        lines += [steps_line(rel, READS, "reads") for rel in hot[:TOP_HOT]] or ["None yet."]
+        if len(hot) > TOP_HOT:
+            lines.append("And %d more." % (len(hot) - TOP_HOT))
+        lines += ["", "## Fixed load per session type, %d days" % HOT_DAYS]
+        types = sorted(ledger["types"].items(), key=lambda kv: (-kv[1]["sessions"], kv[0]))
+        if types:
+            lines += ["| Type | Sessions | Average fixed load |", "|---|---|---|"]
+            lines += ["| %s | %d | %s |" % (t, v["sessions"], "{:,} chars".format(v["fixed_load"])
+                                            if v["fixed_load"] is not None else "no useful action")
+                      for t, v in types[:TOP_TYPES]]
+            if len(types) > TOP_TYPES:
+                lines.append("And %d more types." % (len(types) - TOP_TYPES))
+        else:
+            lines.append("No Claude Code session in %d days." % HOT_DAYS)
+        folders = {}
+        for rel in notes(root):
+            folder = rel.split("/")[0] if "/" in rel else "(root)"
+            total, cold = folders.get(folder, (0, 0))
+            folders[folder] = (total + 1, cold + (not recent(rel, READS, DORMANT_DAYS)))
+        order = sorted(folders, key=lambda f: (f == "(root)", f))
+        lines += ["", "## Dormant: no read in %d days, counts only" % DORMANT_DAYS,
+                  ", ".join("%s %d of %d" % (f, folders[f][1], folders[f][0]) for f in order)]
+    else:
+        written = sorted((rel for rel in paths if recent(rel, ("write", "git"))),
+                         key=lambda r: (-recent(r, ("write", "git")), r))
+        lines += ["", "## Writes in %d days" % HOT_DAYS]
+        if src.get("git") is None:
+            lines.append("Not measured: the vault is not a git repo with commits.")
+        else:
+            lines += [steps_line(rel, ("write", "git"), "writes") for rel in written[:TOP_LIST]] or ["None."]
+        inbound, names = {}, {}
+        for rel in notes(root):
+            names.setdefault(os.path.basename(rel)[:-3].lower(), rel)
+        for rel in notes(root):
+            with open(os.path.join(root, *rel.split("/")), encoding="utf-8", errors="replace") as fh:
+                for target in find.LINK.findall(fh.read()):
+                    hit = names.get(os.path.basename(target.strip()).lower())
+                    if hit and hit != rel:
+                        inbound[hit] = inbound.get(hit, 0) + 1
+        lines += ["", "## Inbound links"]
+        lines += ["- %s: %d link%s" % (rel, n, "" if n == 1 else "s") for rel, n in
+                  sorted(inbound.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_LIST]] or ["None yet."]
+
+    lines += ["", "## Size budgets", "| File | Chars | Budget | Used |", "|---|---|---|---|"]
+    lines += ["| {} | {:,} | {:,} | {}%{} |".format(label, n, b, n * 100 // b if b else 0, " over" if n > b else "")
+              for label, n, b in budget_rows(root)]
+    if has_reads:
+        lines += ["", "## Drafts wanting paving: hot, `status: draft`",
+                  "%d hot draft%s." % (len(drafts), "" if len(drafts) == 1 else "s")]
+        lines += ["- %s: %d reads" % (rel, recent(rel, READS)) for rel in drafts[:TOP_LIST]]
+    waiting = waiting_verify(root, ledger, today)
+    lines += ["", "## Paved, waiting for your verify"]
+    lines += ["- %s (paved %s)" % (rel, day) for rel, day in waiting[:TOP_LIST]] or ["None yet."]
+    if len(waiting) > TOP_LIST:
+        lines.append("And %d more." % (len(waiting) - TOP_LIST))
+    if has_reads:
+        lines += ["", "## Signposts: missed twice or more in %d days" % HOT_DAYS]
+        signs = sorted(ledger["signposts"].items(), key=lambda kv: (-kv[1]["misses"], kv[0]))
+        lines += ['- "%s": %d misses, last %s' % (q, m["misses"], m["last"])
+                  for q, m in signs[:TOP_LIST]] or ["None."]
+    return "\n".join(lines) + "\n"
+
+
+def waiting_verify(root, ledger, today):
+    """[(note, day paved)]: paved before today, not asked in a pass yet, and still a draft."""
+    out = []
+    for rel, p in sorted(ledger["paved"].items(), key=lambda kv: (kv[1]["paved"], kv[0])):
+        path = os.path.join(root, *rel.split("/"))
+        if p["asked"] or p["paved"] >= today.isoformat() or not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            if find.plain(find.frontmatter(fh.read()).get("status", "")) == "draft":
+                out.append((rel, p["paved"]))
+    return out
+
+
+# ------------------------------------------------------------ due
+
+
+def age(day, today):
+    """Whole days from an ISO date to today, or None when it is not one."""
+    try:
+        return (today - dt.date.fromisoformat(day)).days
+    except (TypeError, ValueError):
+        return None
+
+
+def over_budget(root):
+    """[(file, chars, budget)] for each file over its budget in bin/vault.json, by lint's rule."""
+    try:
+        with open(os.path.join(root, "bin", "vault.json"), encoding="utf-8") as fh:
+            raw = json.load(fh).get("budgets") or {}
+    except (OSError, ValueError, AttributeError):
+        raw = {}
+    table = {}
+    for rel, n in raw.items() if isinstance(raw, dict) else []:
+        try:
+            table[os.path.normpath(rel.replace("\\", "/")).replace(os.sep, "/")] = int(n)
+        except (TypeError, ValueError):
+            pass
+    limits = {rel: n for rel, n in table.items() if rel != "SKILL.md"}
+    skills = os.path.join(root, ".claude", "skills")
+    if "SKILL.md" in table and os.path.isdir(skills):
+        for name in sorted(os.listdir(skills)):
+            limits.setdefault(".claude/skills/%s/SKILL.md" % name, table["SKILL.md"])
+    out = []
+    for rel, budget in sorted(limits.items()):
+        path = os.path.join(root, *rel.split("/"))
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                size = len(fh.read())
+            if size > budget:
+                out.append((rel, size, budget))
+    return out
+
+
+def due(root, today):
+    """The nudge: one line naming every reason `tend` is due, or "" when none is. Reads, never writes."""
+    ledger, reasons = load(root), []
+    refreshed = age(ledger.get("refreshed"), today)
+    if refreshed is not None:  # with no ledger, only the budgets speak
+        if refreshed > REFRESH_DAYS:
+            reasons.append("the paths report is %d days old" % refreshed)
+        last, first = age(last_pass(root, ledger, today), today), age(ledger.get("first_refresh"), today)
+        first = refreshed if first is None else first
+        if last is not None and last > PASS_DAYS:
+            reasons.append("the last pass was %d days ago" % last)
+        elif last is None and first > PASS_DAYS:
+            reasons.append("no pass yet, %d days after the first refresh" % first)
+    over = ["{} ({:,} of {:,} chars)".format(rel, n, b) for rel, n, b in over_budget(root)]
+    if over:
+        reasons.append("over budget: " + ", ".join(over))
+    return 'Tend is due: %s. Say "tend" to start it.' % "; ".join(reasons) if reasons else ""
+
+
+def main():
+    if os.path.exists(os.path.join(VAULT, ".bed.json")):
+        return 0  # a bed keeps no ledger and needs no tending: its footsteps are walked in the brain
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("mode", nargs="?", default="refresh", choices=["refresh", "due"],
+                    help="refresh (the default): update .paths/ledger.json and .paths/report.md; "
+                         "due: print one line when tend is due, else nothing")
+    ap.add_argument("--pass", dest="pass_", action="store_true",
+                    help="refresh, record today as the last pass, save the report in .paths/reports/")
+    ap.add_argument("--paved", action="append", default=[], metavar="NOTE",
+                    help="refresh, and record this note (vault-relative path) as paved today; repeatable")
+    ap.add_argument("--hook", action="store_true",
+                    help="with due: print the line as Claude Code hook JSON, so it shows on screen")
+    ap.add_argument("--today", help="YYYY-MM-DD to count from instead of today (for tests)")
+    ap.add_argument("--transcripts", action="append", default=[], metavar="DIR",
+                    help="a folder of Claude Code transcripts (.jsonl) of this vault to read as well")
+    args = ap.parse_args()
+    try:
+        today = dt.date.fromisoformat(args.today) if args.today else dt.date.today()
+    except ValueError:
+        ap.error("--today takes YYYY-MM-DD")
+    if args.mode == "due":
+        if args.pass_ or args.paved:
+            ap.error("--pass and --paved go with a refresh, not with due")
+        line = due(VAULT, today)
+        if line and args.hook:
+            # A SessionStart hook's plain output reaches only the AI; systemMessage shows it to the owner.
+            print(json.dumps({"systemMessage": line, "hookSpecificOutput": {
+                "hookEventName": "SessionStart", "additionalContext": line}}))
+        elif line:
+            print(line)
+        return 0
+    vault, paved = Vault(VAULT), []
+    for note in args.paved:
+        rel = vault.rel(note, VAULT)
+        if not rel or not rel.endswith(".md") or vault.kind(rel) != "file":
+            ap.error("--paved %s: no such note in this vault (give its path from the vault root)" % note)
+        paved.append(rel)
+    ledger, opened, unchanged = refresh(VAULT, today, [os.path.abspath(d) for d in args.transcripts])
+    for rel in paved:
+        ledger["paved"][rel] = {"paved": today.isoformat(), "asked": None}
+    if args.pass_:
+        ledger["last_pass"] = today.isoformat()
+    text = report(VAULT, ledger, today)
+    with open(os.path.join(VAULT, REPORT), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    saved = ""
+    if args.pass_:
+        os.makedirs(os.path.join(VAULT, REPORTS), exist_ok=True)
+        with open(os.path.join(VAULT, REPORTS, today.isoformat() + ".md"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        saved = ", saved as .paths/reports/%s.md" % today.isoformat()
+        for rel, _ in waiting_verify(VAULT, ledger, today)[:TOP_LIST]:  # the ones the report listed, asked now
+            ledger["paved"][rel]["asked"] = today.isoformat()
+    if paved or args.pass_:
+        save(VAULT, ledger)
+    print("paths: %d transcripts read, %d unchanged; the report is .paths/report.md%s%s"
+          % (opened, unchanged, saved, "; %d paved" % len(paved) if paved else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

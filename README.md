@@ -8,7 +8,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/brain-garden-loop-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/brain-garden-loop-light.svg">
-    <img src="assets/brain-garden-loop.png" width="900" alt="Brain Garden: harvest it, seed it, live in it, learn, in a loop around your vault, which holds short-term (today's daily note), mid-term (Now.md) and long-term memory (your notes), with private beds, optional shared beds, and desire paths coming soon.">
+    <img src="assets/brain-garden-loop.png" width="900" alt="Brain Garden: harvest it, seed it, live in it, learn, in a loop around your vault, which holds short-term (today's daily note), mid-term (Now.md) and long-term memory (your notes), with private beds, optional shared beds, and desire paths: the routes your AI walks most get paved.">
   </picture>
 </p>
 
@@ -28,11 +28,11 @@ it can open your files) or any chat AI.
 | A vault to open right now, no terminal | [`starter-vault/`](starter-vault) (download the ZIP, copy that folder) |
 | To learn Obsidian | [guides/obsidian-basics.md](guides/obsidian-basics.md) |
 | To bring your stuff in | [guides/bringing-things-in.md](guides/bringing-things-in.md) |
-| To choose what to bring in, and prune later | [guides/harvesting-and-pruning.md](guides/harvesting-and-pruning.md) |
+| To choose what to bring in, and tend it later | [guides/harvesting-and-tending.md](guides/harvesting-and-tending.md) |
 | The daily habit | [guides/daily-loop.md](guides/daily-loop.md) |
 | ChatGPT prompts | [guides/prompts-for-any-ai.md](guides/prompts-for-any-ai.md) |
 | A backup | [guides/backup-with-github.md](guides/backup-with-github.md) |
-| To share one with a team | [guides/sharing-a-vault.md](guides/sharing-a-vault.md) |
+| To share part of it with family or a team | [guides/sharing-a-vault.md](guides/sharing-a-vault.md) |
 
 ## How it works
 
@@ -44,19 +44,22 @@ it can open your files) or any chat AI.
 | **Learn** | It improves its own process as you use it, every evening in the first month, then only when something rubs. |
 
 It remembers on three timescales: **short-term** (today's note), **mid-term** (`Now.md`, what
-is in flight) and **long-term** (everything you know). It is all private on your computer,
-with shared beds if you ever want them. Next on the [roadmap](ROADMAP.md): **desire paths**,
-where the routes you use most get stronger and the ones you never use are compacted or pruned,
-the opposite of atrophy. The full story: [guides/how-it-works.md](guides/how-it-works.md).
+is in flight) and **long-term** (everything you know). It is all private on your computer.
+To share part of it, the brain sends vines to its **beds**: separate vaults, each in its own
+git repository, holding only the topics you chose, whose edits come back to your brain. And it
+grows **desire paths**: it measures where your AI actually walks, and once a month `tend`
+proposes one numbered list that paves the busy routes, signposts the lookups that missed and
+keeps the files every session reads lean, the opposite of atrophy. The full story:
+[guides/how-it-works.md](guides/how-it-works.md).
 
 ## What a vault gets
 
 | | Personal preset | Work preset |
 |---|---|---|
 | Kinds of note | Notes, References, People, Clippings, Daily | Knowledge, Playbooks, People, Meetings, Clippings, Daily |
-| Always | `Home.md`, `Readme.md`, `CLAUDE.md` (the rules for any AI), `Decisions.md`, `Me.md`, `Now.md`, `Sources.md`, topic pages, one template and one table (Base) per kind | same |
-| Tools in `bin/` | `lint.py` (the vault checks itself), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
-| Claude skills | `start-of-day`, `run-brief`, `end-of-day`, `file-clippings`, `harvest`, `prune`, `kepano-method` | same |
+| Always | `Home.md`, `Readme.md`, `CLAUDE.md` (what any AI reads first), `Rules.md` (the detail it reads before writing), `Decisions.md`, `Me.md`, `Now.md`, `Sources.md`, topic pages, one template and one table (Base) per kind | same |
+| Tools in `bin/` | `lint.py` (the vault checks itself), `find.py` (finds notes through a one-line-per-note index), `paths.py` (footsteps: a local report of where your AI walks, and one line when `tend` is due), `beds.py` (shares chosen topics with a bed, a separate vault others can see, and brings their edits back), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
+| Claude skills | `start-of-day`, `run-brief`, `end-of-day`, `file-clippings`, `harvest`, `tend`, `kepano-method` | same |
 
 The structure follows Steph Ango's method ([How I use Obsidian](https://stephango.com/vault)):
 few folders, a `categories` property with links for topics, a template and a Base per kind. It
@@ -82,6 +85,29 @@ yourself: `setup/mac.sh` and `setup/windows.ps1` do.
 | `resting-view` | Notes open rendered, with no cursor, until you click into the text. |
 | `sticky-bullets` | A bullet's parents stay pinned at the top while you write deep in a long list. |
 
+## Updating a vault
+
+Brain Garden keeps improving, and a vault planted earlier takes every improvement with one
+command. Commit the vault first (git is the undo), get the latest seed
+(`python3 setup/build_vault.py --self-update`), then look at the plan before running it:
+
+```bash
+python3 setup/build_vault.py --upgrade --dest ~/Documents/Obsidian/sam-brain --dry-run
+python3 setup/build_vault.py --upgrade --dest ~/Documents/Obsidian/sam-brain
+```
+
+It adds what the vault lacks (new scripts, skills, `Rules.md`, new keys in `bin/vault.json`,
+new `.gitignore` lines, the hooks and permissions in `.claude/settings.json`) and replaces the
+seed's own files you never edited, which it knows from `bin/seed-manifest.json`, written at
+planting. It never touches a note, a template or the content of a root document. A seed file
+you did edit stays as it is, with the seed's new version beside it as `<file>.new`; a changed
+`CLAUDE.md` comes as `CLAUDE.md.new`. Ask your AI to merge each `.new` with you as a numbered
+list, then delete it. An earlier `.new` you have not finished merging is never overwritten:
+the newer one goes beside it as `.new2`. A skill the seed has retired is listed, never
+deleted, and a symlink is left alone and listed. A vault planted before the manifest existed
+works too: the builder reads its options from the vault and says what it found. Run it again
+and it says there is nothing to upgrade; run it from an older copy of the seed and it refuses.
+
 ## What is in this repo
 
 ```
@@ -91,7 +117,7 @@ setup/              mac.sh and windows.ps1 (install git, Python, Obsidian; build
                     and build_vault.py, the builder they call
 template/           what a vault is built from: brain/ always, optional/ by flag, plugins/
 starter-vault/      the personal preset, ready to open (rebuilt by tools/build_starter.py)
-guides/             Obsidian basics, bringing things in, harvesting and pruning, the daily
+guides/             Obsidian basics, bringing things in, harvesting and tending, the daily
                     loop, backup, sharing, chat prompts, and a Web Clipper template
 tools/              check.py (the test suite) and build_starter.py
 .githooks/          pre-commit runs check.py (git config core.hooksPath .githooks)

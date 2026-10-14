@@ -1,2 +1,5 @@
 # Local only: terms tools/check.py refuses in any tracked file
 tools/never-share.txt
+
+# Python bytecode from running the tools
+__pycache__/

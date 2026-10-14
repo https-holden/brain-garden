@@ -16,7 +16,7 @@ the list of waiting notes, to whichever AI you use.
 
 The Claude Code run is boxed in: it may read the vault and the web, edit only
 the waiting notes, add topic pages in Categories/, and run only the rename
-helper. Every other action is refused without asking. Nothing is committed.
+helper and the find tool. Every other action is refused without asking. Nothing is committed.
 Set CLAUDE_BIN to use a differently named `claude` command, MODEL to change
 the model (default sonnet).
 """
@@ -32,7 +32,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ in the vault's bin/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import find  # noqa: E402
 from ingest import DASHES, END, START, VAULT, rename, waiting_notes  # noqa: E402
 
 PROMPT = Path(__file__).with_name("librarian.md")
@@ -64,10 +66,10 @@ def build_prompt(notes: list[Path], paste: bool) -> str:
         today=today, notes="\n".join("- `%s`" % rel(p) for p in notes))
     if not paste:
         return text
-    rules = (VAULT / "CLAUDE.md").read_text(encoding="utf-8")
+    rules = ["## The vault's rules (%s)\n\n%s" % (name, (VAULT / name).read_text(encoding="utf-8"))
+             for name in ("CLAUDE.md", "Rules.md") if (VAULT / name).exists()]
     topics = sorted(p.stem for p in (VAULT / "Categories").glob("*.md"))
-    parts = [text, REPLY_FORMAT,
-             "## The vault's rules (CLAUDE.md)\n\n" + rules,
+    parts = [text, REPLY_FORMAT, *rules,
              "## Topic pages that exist\n\n" + (", ".join(topics) or "none yet"),
              "## The notes"]
     for p in notes:
@@ -98,7 +100,8 @@ def run_claude(notes: list[Path]) -> None:
         sys.exit("No `claude` command found. Install Claude Code, or use --paste with any chat AI.")
     allowed = ["Read", "Glob", "Grep", "WebSearch", "WebFetch",
                "Edit(./Clippings/**)", "Edit(./Categories/**)",  # Edit rules cover Write too
-               "Bash(python3 bin/ingest.py rename *)", "Bash(python3 bin/ingest.py waiting)"]
+               "Bash(python3 bin/ingest.py rename *)", "Bash(python3 bin/ingest.py waiting)",
+               "Bash(python3 bin/find.py *)"]
     allowed += ["Edit(./%s)" % rel(p) for p in notes if not rel(p).startswith("Clippings/")]
     now = dt.datetime.now()
     cmd = [claude, "-p", build_prompt(notes, paste=False), "--model", MODEL,
@@ -135,6 +138,7 @@ def finish(report: str, when: dt.datetime, session: str) -> None:
     left = waiting_notes()
     if left:
         print("\n".join("UNFILED  %s" % rel(p) for p in left))
+    find.rebuild(str(VAULT))  # renamed and new notes, before the check
     print("\nThe vault's check:", flush=True)
     subprocess.run([sys.executable, str(VAULT / "bin" / "lint.py")], cwd=VAULT)
 
@@ -144,6 +148,16 @@ def split_frontmatter(text: str) -> tuple[str, str]:
         return "", text
     end = text.index("\n---", 3) + 4
     return text[:end], text[end:]
+
+
+def start_here(page: str) -> str:
+    """A new topic page with the `## Start here` heading the topic template has, above its first embed."""
+    if re.search(r"^#{2,6} *start here\s*$", page, re.M | re.I):
+        return page
+    embed = re.search(r"^!\[\[", page, re.M)
+    if not embed:
+        return page.rstrip("\n") + "\n\n## Start here\n"
+    return page[:embed.start()] + "## Start here\n\n" + page[embed.start():]
 
 
 def apply_answer(path: Path) -> None:
@@ -161,7 +175,7 @@ def apply_answer(path: Path) -> None:
             if dest.exists():
                 print("KEPT     %s  (exists; topic pages are never overwritten)" % target)
             else:
-                dest.write_text(text, encoding="utf-8")
+                dest.write_text(start_here(text), encoding="utf-8")
                 print("TOPIC    %s" % target)
             continue
         if target not in waiting:
@@ -172,6 +186,9 @@ def apply_answer(path: Path) -> None:
         if not new_fm:
             print("REFUSED  %s  (the answer has no frontmatter)" % target)
             continue
+        kept = re.search(r"^imported_from:.*$", split_frontmatter(current)[0], re.M)
+        if kept and not re.search(r"^imported_from:", new_fm, re.M):  # how a later vault import knows it
+            new_fm = new_fm[:-4] + "\n" + kept.group(0) + "\n---"
         if not re.search(r"^filed:", new_fm, re.M):
             new_fm = new_fm[:-4] + "\nfiled: %s\n---" % dt.date.today().isoformat()
         tail = current.split(END, 1)[1] if END in current else ""

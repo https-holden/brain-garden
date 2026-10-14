@@ -4,13 +4,15 @@
 
 **Blocked by:** 01 (Index, find and the one recipe)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tiny scrubbed fixture transcripts are checked in with the tests and cover: a Read, a Bash cat with a relative path, a grep hit, a folder listing, a slash-command session, a Skill session, a misc session, a write before the first MCP call, a subagent transcript, and transcripts in two config folders
-- [ ] The ledger's counts, last dates, per-type counts and average fixed load match the fixtures; git writes appear with their own kind; find-log hits appear as `find` footsteps
-- [ ] A second run with nothing new reads no transcript and leaves the ledger unchanged
-- [ ] The report fits one screen, names its sources, lists dormant only as counts, and shows signposts from repeated misses in the find log
-- [ ] With no transcripts, no find log and no git, the report says reads are not measured and still shows budgets; nothing errors
-- [ ] The ledger and the live report are git-ignored; no note is created, edited or moved by the script
-- [ ] `end-of-day` runs the refresh; the vocabulary (footstep, path, hot, dormant, fixed load) is in `Rules.md` conventions
-- [ ] `tools/check.py` green under both Pythons; no dashes; nothing personal, including in the fixtures
+- [x] Tiny scrubbed fixture transcripts are checked in with the tests and cover: a Read, a Bash cat with a relative path, a grep hit, a folder listing, a slash-command session, a Skill session, a misc session, a write before the first MCP call, a subagent transcript, and transcripts in two config folders
+- [x] The ledger's counts, last dates, per-type counts and average fixed load match the fixtures; git writes appear with their own kind; find-log hits appear as `find` footsteps
+- [x] A second run with nothing new reads no transcript and leaves the ledger unchanged
+- [x] The report fits one screen, names its sources, lists dormant only as counts, and shows signposts from repeated misses in the find log
+- [x] With no transcripts, no find log and no git, the report says reads are not measured and still shows budgets; nothing errors
+- [x] The ledger and the live report are git-ignored; no note is created, edited or moved by the script
+- [x] `end-of-day` runs the refresh; the vocabulary (footstep, path, hot, dormant, fixed load) is in `Rules.md` conventions
+- [x] `tools/check.py` green under both Pythons; no dashes; nothing personal, including in the fixtures
+
+**Outcome (2026-10-14):** Merged 58e3949, parse fixes 66e7a2e. The parser was written without reading real transcripts (access refused for privacy); the format was checked against the known Claude Code JSONL shape. Unverified on real transcripts: smoke-test `python3 bin/paths.py` in a real vault. Also 80d470a: vault scripts write no __pycache__ (CI fix).

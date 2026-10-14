@@ -10,6 +10,10 @@ Add to it whenever the vault departs on purpose, with the date and the reason.
 - **`status` on claim-like kinds** (`draft`, `verified`, `stale`). The method has no such
   field. It exists because a model writes drafts here and a person has to be able to tell
   checked from unchecked.
+- **A "Start here" on every hub.** Kepano's category pages are a Base and little else. Here
+  `Home.md` and each topic page open with `## Start here`, 3 to 7 hand-picked plain links,
+  above the Base: an AI reading the file as text sees no Base, and a person wants the few best
+  notes first. The Base still lists everything. The shape is "Hubs" in `Rules.md`.
 - **A lint script.** Kepano maintains by hand. This vault checks its own schema because
   sessions write to it, and a session cannot be trusted to remember a style guide.
 - **This vault may be one of several.** Rule 1 says one vault. A project vault inside a code

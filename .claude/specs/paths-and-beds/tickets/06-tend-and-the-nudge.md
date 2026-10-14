@@ -4,12 +4,14 @@
 
 **Blocked by:** 02 (Budgets and the CLAUDE.md split), 03 (Hub signage), 05 (Footsteps ledger and report)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A planted vault has `tend` and no `prune`; no file in the repo or a planted vault still sends the reader to prune
-- [ ] The skill reads only the reports to propose, names nothing dormant, lists the seven groups in order, and states the four corrections as steps it follows
-- [ ] `--pass` records the date, saves the dated report that git tracks, and a paved note recorded in the ledger is listed under "Paved, waiting for your verify" and not under drafts wanting paving
-- [ ] Due mode at a fixed today: nothing when fresh, the line at 8 days since refresh, at 31 days since the pass or with no pass, and with a file over budget; nothing in a bed checkout
-- [ ] Planting merges the SessionStart hook into `.claude/settings.json` without disturbing what is there; `start-of-day` runs due mode
-- [ ] Lint's budget warning names `tend`; ROADMAP, "how it works", README, START-HERE, AGENTS.md and the hero image say desire paths have landed
-- [ ] `tools/check.py` green under both Pythons; starter-vault rebuilt; no dashes; nothing personal
+- [x] A planted vault has `tend` and no `prune`; no file in the repo or a planted vault still sends the reader to prune
+- [x] The skill reads only the reports to propose, names nothing dormant, lists the seven groups in order, and states the four corrections as steps it follows
+- [x] `--pass` records the date, saves the dated report that git tracks, and a paved note recorded in the ledger is listed under "Paved, waiting for your verify" and not under drafts wanting paving
+- [x] Due mode at a fixed today: nothing when fresh, the line at 8 days since refresh, at 31 days since the pass or with no pass, and with a file over budget; nothing in a bed checkout
+- [x] Planting merges the SessionStart hook into `.claude/settings.json` without disturbing what is there; `start-of-day` runs due mode
+- [x] Lint's budget warning names `tend`; ROADMAP, "how it works", README, START-HERE, AGENTS.md and the hero image say desire paths have landed
+- [x] `tools/check.py` green under both Pythons; starter-vault rebuilt; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged 531ffb0, parent fixes 35cd14a (hook prints systemMessage JSON via `due --hook`; quoted path), follow-up 7b15000. Decision: with no pass ever, the nudge waits until the ledger's first refresh is 30 days old, so a new vault is not nagged. Move cold cutoff is `cold_days` in bin/vault.json (90).

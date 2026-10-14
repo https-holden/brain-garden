@@ -4,13 +4,15 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Both presets and a custom vault plant with the find tool and an index whose lines match their notes, aliases and categories included, empty fields kept as empty slots
-- [ ] `find` with two words returns only lines matching both; a stale note is left out, and shown with `--stale`; `--topic` returns exactly that topic's notes; `--all` prints the index
-- [ ] A note added by hand (no script run) is found by the next `find`, because the index rebuilt; lint rewrites an index edited out of shape and says so, exit 0
-- [ ] The find log gains one line per query, with the hit count and matched paths; a no-hit query is recorded as a miss; the log and nothing else in `.paths/` except the index is git-ignored
-- [ ] `ingest.py add` and the librarian leave the index current
-- [ ] The template `CLAUDE.md` recipe names the find tool as step 1; no shipped skill restates the steps or lists kind folders, and `check.py` has a check that fails if one does
-- [ ] Vault map, `Readme.md` and the chat-AI prompts guide mention the index and `--all`; starter-vault rebuilt
-- [ ] `tools/check.py` green under `python3` and `/usr/bin/python3`; no dashes; nothing personal
+- [x] Both presets and a custom vault plant with the find tool and an index whose lines match their notes, aliases and categories included, empty fields kept as empty slots
+- [x] `find` with two words returns only lines matching both; a stale note is left out, and shown with `--stale`; `--topic` returns exactly that topic's notes; `--all` prints the index
+- [x] A note added by hand (no script run) is found by the next `find`, because the index rebuilt; lint rewrites an index edited out of shape and says so, exit 0
+- [x] The find log gains one line per query, with the hit count and matched paths; a no-hit query is recorded as a miss; the log and nothing else in `.paths/` except the index is git-ignored
+- [x] `ingest.py add` and the librarian leave the index current
+- [x] The template `CLAUDE.md` recipe names the find tool as step 1; no shipped skill restates the steps or lists kind folders, and `check.py` has a check that fails if one does
+- [x] Vault map, `Readme.md` and the chat-AI prompts guide mention the index and `--all`; starter-vault rebuilt
+- [x] `tools/check.py` green under `python3` and `/usr/bin/python3`; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged 33ec4b5. `bin/find.py`, `.paths/index.txt`, `.paths/find.log` (tab-separated, `--all` not logged), recipe guard in check.py. Parent fix 3fa0e73: the starter check ignores git-ignored files. Known limits: the guard is a heuristic; rare YAML forms (unquoted flow list of wikilinks, inline comments) are not parsed.

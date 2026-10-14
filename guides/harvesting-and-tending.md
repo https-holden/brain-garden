@@ -1,8 +1,9 @@
-# Harvesting and pruning
+# Harvesting and tending
 
 A second brain fails in one of two ways: nothing goes in, or everything goes in and none of it
-is ever used. Harvesting is deciding what comes in and how; pruning is clearing out what did
-not earn its place. Both are a conversation between you and your AI, and this is how to have it.
+is ever used. Harvesting is deciding what comes in and how; tending is the monthly pass that
+keeps it useful: paving what your AI keeps walking, and clearing out what did not earn its
+place. Both are a conversation between you and your AI, and this is how to have it.
 
 ## The short version
 
@@ -11,10 +12,11 @@ not earn its place. Both are a conversation between you and your AI, and this is
 2. **Sample before you bulk-import.** Bring in ten things, look at them filed, adjust, then do
    the rest.
 3. **Write down every source** in `Sources.md`, with how often to pull it.
-4. **Prune monthly.** Cut what you never touched, merge duplicates, stop collecting from
-   sources that never pay off.
+4. **Tend monthly.** Check and shorten the notes your AI keeps reading, cut what you never
+   touched, merge duplicates, stop collecting from sources that never pay off.
 
-With Claude: say **"harvest"** to do steps 1 to 3 together, and **"prune"** once a month.
+With Claude: say **"harvest"** to do steps 1 to 3 together, and **"tend"** once a month (a
+line at the start of a session, and in the morning brief, says when it is due).
 With ChatGPT: the prompts are at the bottom of this page.
 
 ## Harvesting
@@ -41,6 +43,7 @@ The AI should ask you these, a few at a time. Answer honestly; "I don't know" is
 | Articles and web pages | The Obsidian Web Clipper button | as it comes |
 | Bookmarks, saved links | A text file of links, `ingest.py add --links` | once, then monthly |
 | Your old notes app | Obsidian's Importer plugin, then `ingest.py add --mine` | once |
+| An Obsidian vault you already have | `ingest.py add --vault`, which proposes where each folder goes | once |
 | Documents and PDFs | `ingest.py add` (add `--mine` if you wrote them) | once, then as it comes |
 | Voice memos | The transcript as a text file, `ingest.py add --mine` | weekly |
 | Emails worth keeping | Drag them out as `.eml` files, `ingest.py add` | as it comes |
@@ -94,9 +97,29 @@ dead links, anything you saved "just in case" and never opened, and anything pri
 not yours. Write each rejected source under "Not brought in, on purpose" in `Sources.md` with
 the reason, so you do not reconsider it every month.
 
-## Pruning
+## Tending
 
-### The monthly report
+Once a month, `tend` reads two reports and proposes one numbered list, in seven groups:
+**Pave** (check a draft your AI keeps reading against its source, shorten it, link it from its
+topic's "Start here"), **Compact** (a file every session loads that grew past its budget),
+**Split** (a skill too big to load every time), **Signpost** (a lookup that keeps finding
+nothing gets an alias, a clearer title or a missing note), **Move cold** (old decisions and
+old daily notes into yearly folders, by date), **Prune** (what you collect but never use) and
+**Keep** (what was looked at and stays). You skip or edit by number; the rest is applied, one
+commit each.
+
+### The paths report
+
+```bash
+python3 bin/paths.py
+```
+
+Where your AI actually walks, from its own session logs, your lookups and the git history:
+the notes it reads most, what each kind of session reads before it starts work, the files
+over their size budget, the drafts worth paving, and the lookups that missed. Notes nobody
+reads are only counted, never listed: that is fine, and nothing is cut for it.
+
+### The pruning report
 
 ```bash
 python3 bin/ingest.py report
@@ -137,7 +160,7 @@ It lists, from the vault itself rather than anyone's guess:
 - "Which source gives me the most notes I actually link to?"
 - "Bring in ten of my [voice memos / old notes / bookmarks] as a sample, file them, and show me
   three."
-- "Prune: run the report and give me one numbered list."
+- "Tend: read the reports and give me one numbered list."
 - "What keeps coming up in my daily notes that has no note of its own?"
 - "Which of my topics should be merged?"
 
@@ -154,11 +177,15 @@ Harvesting:
 >
 > (paste the "Picking a method" table from this guide)
 
-Pruning (run `python3 bin/ingest.py report` first and paste its output):
+Tending (run `python3 bin/paths.py` and `python3 bin/ingest.py report` first; the first writes
+`.paths/report.md`, the second prints its list):
 
-> Here is my vault's pruning report and my Sources.md. Give me one numbered list of actions:
-> what to trash, what to merge into what, which drafts to check, and which sources to stop or
-> pull less often, each with a one-line reason. Never suggest deleting anything outside
-> Clippings/ or any daily note. Lead with the sources.
+> Here are my vault's paths report, its pruning report and my Sources.md. Give me one
+> numbered list of actions in seven groups, in this order, numbering straight through: Pave
+> (drafts to check and shorten), Compact (files over their budget, down to about 75% of it),
+> Split, Signpost (lookups that missed: an alias, a clearer title or a missing note), Move
+> cold, Prune (what to trash, what to merge into what, which sources to stop or pull less
+> often) and Keep. One line each, with the reason from the report. Keep an empty group with
+> one line saying why. Never suggest deleting anything outside Clippings/ or any daily note.
 >
-> (paste the report, then Sources.md)
+> (paste .paths/report.md, then the pruning report, then Sources.md)

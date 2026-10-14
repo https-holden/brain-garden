@@ -13,3 +13,13 @@
 bin/*.log
 bin/.env
 __pycache__/
+
+# The find log (every lookup) stays on this machine; the index beside it is committed
+.paths/find.log
+
+# The footsteps ledger and the live paths report stay on this machine (bin/paths.py)
+.paths/ledger.json
+.paths/report.md
+
+# Words bin/beds.py never lets leave for a bed: the list itself never leaves either
+bin/never-share.txt

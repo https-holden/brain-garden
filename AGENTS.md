@@ -50,9 +50,9 @@ Then ask whether that sounds like what they want, and answer questions before mo
    and in a sentence what they most want it to help with. Life or job picks the preset:
    `personal` or `work`. The sentence goes in `Me.md` later.
 2. **Where most of their material already lives**: the one or two places that hold the bulk
-   of it (Apple Notes, Notion, Google Docs, voice memos, email, paper). Do not import anything
-   yet; this tells you what to harvest first in step 5, and whether they need the Importer
-   plugin or PDF support during setup.
+   of it (Apple Notes, Notion, Google Docs, voice memos, email, paper, an Obsidian vault they
+   already have). Do not import anything yet; this tells you what to harvest first in step 5,
+   and whether they need the Importer plugin or PDF support during setup.
 3. **Their computer**: Mac or Windows. (Linux works like the Mac path.)
 4. **What you can do**: if you can run commands on their machine (Claude Code, the Claude
    desktop app's Code tab, Codex), you do the commands and they watch. If you are a chat in a
@@ -124,7 +124,7 @@ text to paste). Every AI that helps them later reads it first.
 
 Do not start with "what do you want to import?". Most people answer "everything" or "nothing".
 Interview them instead, a few questions at a time (the vault's `harvest` skill has the full
-procedure, and [guides/harvesting-and-pruning.md](guides/harvesting-and-pruning.md) has the
+procedure, and [guides/harvesting-and-tending.md](guides/harvesting-and-tending.md) has the
 reasoning and the prompts):
 
 1. Where does your thinking happen today? (Notes app, voice memos, messages to yourself,
@@ -147,14 +147,20 @@ or three in Obsidian together. Is this what they wanted to keep? Adjust, and onl
 the rest, with `--dry-run` first. Their own writing before other people's, recent before old.
 Show them the topic pages filling themselves in.
 
+An Obsidian vault they already have is one more source: `python3 bin/ingest.py add --vault
+<its folder>` proposes which folder goes where and copies nothing until they agree; the
+vault's `harvest` skill has the steps, sample first.
+
 ### 6. Show them the daily loop
 
 [guides/daily-loop.md](guides/daily-loop.md): "start my day" in the morning, jot under
 `## Notes` in the daily note, "end of day" in the evening. That habit is what makes it a
-second brain. Tell them about the monthly **prune** too: `python3 bin/ingest.py report` lists
-unused clippings, duplicates, thin topics, overdue sources and how much of each source they
-actually use, and the `prune` skill turns it into one numbered list. Nothing they wrote is
-ever deleted by it. With a chat AI, the prompts are in
+second brain. Tell them about the monthly **tend** too: the `tend` skill reads where their AI
+actually walks (`python3 bin/paths.py`) and, with the ingest tools, what they collect but
+never use (`python3 bin/ingest.py report`), and turns both into one numbered list: pave the
+drafts it keeps reading, compact the files that grew, signpost the lookups that missed, move
+what is cold, prune clippings nobody uses. Nothing they wrote is ever deleted by it, and one
+line at the start of a session says when it is due. With a chat AI, the prompts are in
 [guides/prompts-for-any-ai.md](guides/prompts-for-any-ai.md).
 
 ### 7. Optional, later
@@ -164,14 +170,37 @@ ever deleted by it. With a chat AI, the prompts are in
 - Kepano's Obsidian skills for Claude Code, which teach Claude the exact note and table syntax:
   in a Claude Code session, `/plugin marketplace add kepano/obsidian-skills`, then
   `/plugin install obsidian@obsidian-skills`.
-- Sharing with a team: [guides/sharing-a-vault.md](guides/sharing-a-vault.md).
+- Sharing part of it with family or a team, through beds: [guides/sharing-a-vault.md](guides/sharing-a-vault.md).
 
 ## Once the vault exists
 
-Work from the vault's own `CLAUDE.md` (inside their vault folder, not this repo's). It is the
-contract: where each kind of note goes, the properties, the rules, the check to run
-(`python3 bin/lint.py`). Follow it exactly, even if you are not Claude. Never invent notes or
-facts for them: the vault holds their material, not yours.
+Work from the vault's own `CLAUDE.md` and the `Rules.md` it points to (inside their vault
+folder, not this repo's). Together they are the contract. `CLAUDE.md` is short: how to work
+there, how to look things up (`python3 bin/find.py` first), and what to read before what.
+`Rules.md` is the detail, read before writing a note: where each kind of note goes, the
+properties, the conventions, the check to run (`python3 bin/lint.py`). Follow them exactly,
+even if you are not Claude. Never invent notes or facts for them: the vault holds their
+material, not yours.
+
+## Updating a vault they already have
+
+When they ask to update their vault, or it was planted from an older copy of this repo, bring
+it up to date with the builder. One step at a time, as always:
+
+1. Make sure the vault is committed, if it uses git, so git is the undo.
+2. Get the latest seed: `python3 ~/brain-garden/setup/build_vault.py --self-update` (a ZIP
+   download: download it again).
+3. The plan first, and read it with them:
+   `python3 ~/brain-garden/setup/build_vault.py --upgrade --dest <their vault folder> --dry-run`
+4. Then the same command without `--dry-run`.
+5. For each `.new` file it lists (`CLAUDE.md.new`, or `bin/lint.py.new` beside a script they
+   edited, and `.new2` when an earlier `.new` was still there), show them what it changes as a
+   numbered list, merge what they approve into the file beside it, then delete the `.new`. Then
+   run `python3 bin/lint.py` in the vault and commit.
+
+It never touches a note, a template or a root document's content, and never deletes anything:
+a skill the seed retired is listed for them to remove when they are ready. Running it again
+prints that there is nothing to upgrade.
 
 ## What is in this repository
 
@@ -179,7 +208,7 @@ facts for them: the vault holds their material, not yours.
 |---|---|
 | `START-HERE.md` | The same journey, written for the person instead of for you |
 | `guides/how-it-works.md` | The idea: harvest, seed, live in it; the three memory tiers; private and shared beds; desire paths |
-| `ROADMAP.md` | What is coming next (desire paths) |
+| `ROADMAP.md` | What is coming next, and what has landed |
 | `setup/` | `mac.sh` and `windows.ps1`: install what is missing and make the vault |
 | `starter-vault/` | A ready-made personal vault for people who skip the terminal |
 | `guides/` | Obsidian basics, bringing things in, the daily loop, backup, sharing, chat prompts |

@@ -4,12 +4,14 @@
 
 **Blocked by:** 01 (Index, find and the one recipe)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Both presets plant with `CLAUDE.md` at or below 6,750 chars and `Rules.md` at or below 15,000, and every token the builder fills lands in the right file
-- [ ] `CLAUDE.md` tells the AI to read `Rules.md` before writing or restructuring a note, touching a template, a Base or a skill, and before a first commit; nothing in `Rules.md` is duplicated in `CLAUDE.md`
-- [ ] Lint on a fresh vault prints no budget warning; with `Now.md` pushed past 12,000 chars it prints one warning with the size, the budget and the compact suggestion, and exits 0
-- [ ] A budget set for one skill in `bin/vault.json` wins over the skill budget for that skill only
-- [ ] The decision entry is in the template's `Decisions.md`, dated with the planting date
-- [ ] The repo's AGENTS.md, the chat-AI prompts guide (project files: `CLAUDE.md`, `Rules.md`, `Me.md`) and the template `Readme.md` name `Rules.md`; every skill that said "read CLAUDE.md" for detail now says `Rules.md` where that is what it means; starter-vault rebuilt
-- [ ] `tools/check.py` green under both Pythons, with checks for the fresh-vault budgets and the warning; no dashes; nothing personal
+- [x] Both presets plant with `CLAUDE.md` at or below 6,750 chars and `Rules.md` at or below 15,000, and every token the builder fills lands in the right file
+- [x] `CLAUDE.md` tells the AI to read `Rules.md` before writing or restructuring a note, touching a template, a Base or a skill, and before a first commit; nothing in `Rules.md` is duplicated in `CLAUDE.md`
+- [x] Lint on a fresh vault prints no budget warning; with `Now.md` pushed past 12,000 chars it prints one warning with the size, the budget and the compact suggestion, and exits 0
+- [x] A budget set for one skill in `bin/vault.json` wins over the skill budget for that skill only
+- [x] The decision entry is in the template's `Decisions.md`, dated with the planting date
+- [x] The repo's AGENTS.md, the chat-AI prompts guide (project files: `CLAUDE.md`, `Rules.md`, `Me.md`) and the template `Readme.md` name `Rules.md`; every skill that said "read CLAUDE.md" for detail now says `Rules.md` where that is what it means; starter-vault rebuilt
+- [x] `tools/check.py` green under both Pythons, with checks for the fresh-vault budgets and the warning; no dashes; nothing personal
+
+**Outcome (2026-10-14):** Merged 4423ddd, review fixes 9738e95 (lint tolerates a hand-edited budgets table; repo CLAUDE.md names Rules.md). Planted CLAUDE.md about 5.2K, Rules.md about 13.3K.

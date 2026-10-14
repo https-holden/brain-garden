@@ -44,7 +44,7 @@ for the whole brief in one go so it costs one answer.
 In brief order. For each:
 
 - **Inside the vault** (a note to write or fix, clippings to file, a link to bring in):
-  do it, following `CLAUDE.md`.
+  do it, following `Rules.md`. Find the note with the one recipe in `CLAUDE.md`.
 - **Outside the vault**, through a connected tool: a message to another person is drafted and
   shown, and sent only if the reply said to send it. An event, task or reminder for the owner
   alone may be made. Never spend money, never delete anything outside the vault, never sign in
