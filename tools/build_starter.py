@@ -40,18 +40,30 @@ def build(where):
     return vault
 
 
-def differs(a, b):
+def local_files():
+    """Files git ignores inside starter-vault/ (a find log, a ledger): left by using it, not the seed."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "--others", "--ignored", "--exclude-standard",
+                              "--", "starter-vault"], capture_output=True, text=True, env=env).stdout
+    except OSError:
+        return set()
+    return {os.path.normpath(os.path.join(ROOT, p)) for p in out.splitlines() if p}
+
+
+def differs(a, b, skip=frozenset()):
     cmp = filecmp.dircmp(a, b)
-    if cmp.left_only or cmp.right_only or cmp.diff_files or cmp.funny_files:
+    right_only = [n for n in cmp.right_only if os.path.normpath(os.path.join(b, n)) not in skip]
+    if cmp.left_only or right_only or cmp.diff_files or cmp.funny_files:
         return True
-    return any(differs(os.path.join(a, d), os.path.join(b, d)) for d in cmp.common_dirs)
+    return any(differs(os.path.join(a, d), os.path.join(b, d), skip) for d in cmp.common_dirs)
 
 
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         fresh = build(tmp)
         if "--check" in sys.argv:
-            if not os.path.isdir(DEST) or differs(fresh, DEST):
+            if not os.path.isdir(DEST) or differs(fresh, DEST, local_files()):
                 sys.exit("starter-vault/ is out of date: run python3 tools/build_starter.py")
             print("starter-vault/ is up to date")
             return
