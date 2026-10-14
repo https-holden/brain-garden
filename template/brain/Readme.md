@@ -38,3 +38,10 @@ and `Me.md`.
 Errors block a commit; warnings are worth a look. One warning is about size: the files your AI
 reads every session (`CLAUDE.md`, `Rules.md`, `Me.md`, `Now.md`, each skill) each have a budget in
 `bin/vault.json`, and when one grows past it, ask your AI to compact it.
+
+## Sharing part of it
+
+Nothing leaves this vault unless you send it. To share a topic with family or a team, give it
+a bed: a separate vault in its own git repository, which `bin/beds.py` keeps in step with this
+one. You choose what goes, by topic or note by note; their edits come back to you, and this
+vault stays the master. "Beds" in `Rules.md` has the details.

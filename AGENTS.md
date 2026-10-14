@@ -168,7 +168,7 @@ ever deleted by it. With a chat AI, the prompts are in
 - Kepano's Obsidian skills for Claude Code, which teach Claude the exact note and table syntax:
   in a Claude Code session, `/plugin marketplace add kepano/obsidian-skills`, then
   `/plugin install obsidian@obsidian-skills`.
-- Sharing with a team: [guides/sharing-a-vault.md](guides/sharing-a-vault.md).
+- Sharing part of it with family or a team, through beds: [guides/sharing-a-vault.md](guides/sharing-a-vault.md).
 
 ## Once the vault exists
 
