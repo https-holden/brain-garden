@@ -43,6 +43,16 @@ show, `Templates/Bases/<Kind>.base` filtered on `file.inFolder()`, an entry in `
 so the lint knows it, a row in both tables above, a paragraph in `Readme.md`, and a line in
 `Decisions.md`.
 
+## Hubs
+
+A hub is `Home.md` or a page in `Categories/`: where a person or an AI lands first. Each reads
+as plain text: `## Start here` sits above its Base embeds and holds 3 to 7 plain `[[links]]`,
+hand-picked, to the notes worth opening first. A new topic page has the heading and no links;
+Home's list names the main topics. The monthly pass, `tend`, adds each note its Pave step
+checks and shortens to its topic's "Start here". The full list stays the Base for people and
+`find.py --topic` for an AI: no generated list is ever written into a hub. The lint warns on a
+topic page three notes use with no link, and on Home with three topic pages and none linked.
+
 ## Bringing things in
 
 The folder is the divider between the owner's writing and everything brought in: whatever

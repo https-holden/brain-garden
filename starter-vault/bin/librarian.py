@@ -149,6 +149,16 @@ def split_frontmatter(text: str) -> tuple[str, str]:
     return text[:end], text[end:]
 
 
+def start_here(page: str) -> str:
+    """A new topic page with the `## Start here` heading the topic template has, above its first embed."""
+    if re.search(r"^## Start here\s*$", page, re.M):
+        return page
+    embed = re.search(r"^!\[\[", page, re.M)
+    if not embed:
+        return page.rstrip("\n") + "\n\n## Start here\n"
+    return page[:embed.start()] + "## Start here\n\n" + page[embed.start():]
+
+
 def apply_answer(path: Path) -> None:
     """Write a chat AI's answer back, refusing anything outside the rules."""
     answer = path.read_text(encoding="utf-8").replace("\r\n", "\n")
@@ -164,7 +174,7 @@ def apply_answer(path: Path) -> None:
             if dest.exists():
                 print("KEPT     %s  (exists; topic pages are never overwritten)" % target)
             else:
-                dest.write_text(text, encoding="utf-8")
+                dest.write_text(start_here(text), encoding="utf-8")
                 print("TOPIC    %s" % target)
             continue
         if target not in waiting:

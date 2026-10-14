@@ -18,6 +18,9 @@ Obsidian, "Open folder as vault", this directory. Start at [[Home]].
   first day. Insert one with the core Templates plugin.
 - **Every kind has a Base** in `Templates/Bases/`, a live table over that folder. Home embeds
   the views worth seeing daily.
+- **Home and every topic page open with "Start here"**: 3 to 7 links you pick, to the notes
+  worth reading first. The table below lists everything. A new topic page starts with the
+  heading and no links, and the monthly tend adds a note there once it is checked and short.
 
 ## Daily use
 

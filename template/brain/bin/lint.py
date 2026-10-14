@@ -12,6 +12,9 @@ Errors (exit 1):
 Warnings (exit 0):
   - a draft older than draft_max_days
   - a Categories/ page that no note uses
+  - a hub with no signs: a Categories/ page whose topic three or more notes use
+    and that has no plain [[link]] (an embed does not count), or Home.md, once
+    there are three topic pages, with no topic page linked under `## Start here`
   - a Now.md bullet with no date, or one older than now_max_days
   - an action log line (a bullet under `## Actions`) that does not start with
     `YYYY-MM-DD HH:MM` or is missing `Why:` or `Asked by:`
@@ -46,6 +49,8 @@ CONFIG = json.load(open(os.path.join(VAULT, "bin", "vault.json"), encoding="utf-
 KINDS = CONFIG["kinds"]
 SKIP = {".git", ".obsidian", ".trash", ".claude", ".paths", "bin", "node_modules", "__pycache__"}
 LINK = re.compile(r"\[\[([^\]|#]+)")
+PLAIN = re.compile(r"(?<!!)\[\[([^\]|#]+)")  # a link, not an embed
+BUSY = 3  # notes on a topic, or topic pages in the vault, before its hub needs a sign
 DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 ACTION = re.compile(r"^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} \S")
 DASHES = ("–", "—")
@@ -107,6 +112,30 @@ def over_budget():
     return out
 
 
+def unsigned_hubs(notes):
+    """A busy hub with no plain link: a topic page whose topic BUSY notes use, and
+    Home once the vault has BUSY topic pages (its links to root documents do not count)."""
+    pages = {os.path.splitext(os.path.basename(r))[0]: r for r in notes if r.startswith("Categories/")}
+    count = {}
+    for rel, (fm, _, _) in notes.items():
+        if not rel.startswith("Templates/"):
+            for topic in {t.strip() for t in LINK.findall(fm.get("categories", ""))}:
+                count[topic] = count.get(topic, 0) + 1
+    out = []
+    for topic, rel in sorted(pages.items()):
+        if count.get(topic, 0) >= BUSY and not PLAIN.search(notes[rel][1]):
+            out.append("%s: %d notes use this topic and its page links none: put the best 3 to 7 under "
+                       "## Start here" % (rel, count[topic]))
+    if "Home.md" in notes and len(pages) >= BUSY:
+        section = ("\n" + notes["Home.md"][1]).split("\n## Start here\n", 1)
+        section = re.split(r"\n#{1,2} ", section[1], maxsplit=1)[0] if len(section) > 1 else ""
+        names = {p.lower() for p in pages}
+        if not any(os.path.basename(t.strip()).lower() in names for t in PLAIN.findall(section)):
+            out.append("Home.md: %d topic pages and none linked under ## Start here: add the main ones "
+                       "there as plain links" % len(pages))
+    return out
+
+
 def main():
     notes = {rel: frontmatter(text) + (text,) for rel, text in walk()}
     names = {os.path.splitext(os.path.basename(rel))[0].lower() for rel in notes}
@@ -162,6 +191,7 @@ def main():
 
     for topic in sorted(topics - used):
         warnings.append("Categories/%s.md: no note uses this topic" % topic)
+    warnings.extend(unsigned_hubs(notes))
 
     if "Now.md" in notes:
         section = ""
