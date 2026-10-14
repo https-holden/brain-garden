@@ -55,7 +55,7 @@ the opposite of atrophy. The full story: [guides/how-it-works.md](guides/how-it-
 |---|---|---|
 | Kinds of note | Notes, References, People, Clippings, Daily | Knowledge, Playbooks, People, Meetings, Clippings, Daily |
 | Always | `Home.md`, `Readme.md`, `CLAUDE.md` (what any AI reads first), `Rules.md` (the detail it reads before writing), `Decisions.md`, `Me.md`, `Now.md`, `Sources.md`, topic pages, one template and one table (Base) per kind | same |
-| Tools in `bin/` | `lint.py` (the vault checks itself), `find.py` (finds notes through a one-line-per-note index), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
+| Tools in `bin/` | `lint.py` (the vault checks itself), `find.py` (finds notes through a one-line-per-note index), `paths.py` (footsteps: a local report of where your AI walks), `ingest.py` (bring things in, report what to prune), `librarian.py` (file what came in, with Claude or any chat AI) | same |
 | Claude skills | `start-of-day`, `run-brief`, `end-of-day`, `file-clippings`, `harvest`, `prune`, `kepano-method` | same |
 
 The structure follows Steph Ango's method ([How I use Obsidian](https://stephango.com/vault)):
