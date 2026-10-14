@@ -254,6 +254,12 @@ def vault_import(tmp):
           code == 0 and out.count("ADDED") == 3 and "2 notes imported before" in out
           and not os.path.exists(os.path.join(vault, "Notes", "Home (3).md")), out)
 
+    if os.path.exists(os.path.join(vault, "bin", "find.py")):
+        index = read(".paths/index.txt")
+        check("import: the import leaves the index listing its notes",
+              all(n in index for n in ("Notes/Plan", "Notes/Ideas", "Notes/Home (2)", "Clippings/Article")), index)
+    else:
+        print("skip  import: the import leaves the index listing its notes (no bin/find.py yet)")
     plan, ideas, home = read("Notes/Plan.md"), read("Notes/Ideas.md"), read("Notes/Home (2).md")
     clip = read("Clippings/Article.md")
     check("import: notes land in their mapped kinds, the dated one in Daily/",
@@ -284,12 +290,6 @@ def vault_import(tmp):
           "missing %s\n%s" % (missing, out))
     code, out = run([PY, os.path.join(vault, "bin", "lint.py")], cwd=vault)
     check("import: lint passes after the import", code == 0, out)
-    if os.path.exists(os.path.join(vault, "bin", "find.py")):
-        index = read(".paths/index.txt")
-        check("import: the index lists the imported notes",
-              all(n in index for n in ("Notes/Plan", "Notes/Ideas", "Notes/Home (2)", "Clippings/Article")), index)
-    else:
-        print("skip  import: the index lists the imported notes (no bin/find.py yet)")
 
 
 def daily_loop(tmp):
