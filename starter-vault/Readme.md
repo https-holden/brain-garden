@@ -47,6 +47,11 @@ Claude Code's own session logs and the git history when there are any, into
 starts work, the files near their size budget, and the lookups that keep finding nothing. It
 never changes a note, and the report stays on this computer.
 
+Once a month, say "tend". Your AI reads that report and proposes one numbered list: check and
+shorten the drafts it keeps reading, compact the files that grew, add the aliases your lookups
+missed, move what has gone cold. It changes only the numbers you approve. When tending is due,
+one line says so as Claude Code starts, and at the top of the morning brief if you use one.
+
 ## Every day
 
 - **Morning**: ask Claude "start my day" (the `start-of-day` skill). Today's note in `Daily/`
@@ -79,12 +84,13 @@ Anything someone else wrote (articles, PDFs, recipes, emails, screenshots) goes 
   the chat, save its answer to a file, then `python3 bin/librarian.py --apply <file>`.
 - Write your own thoughts on a clipping below its `ingest:end` line. Nothing ever touches that.
 - **Where it all comes from**: `Sources.md` lists your sources and how often to pull each.
-  Ask Claude to "harvest" to set it up together, and to "prune" once a month to clear out
-  what you never use (`python3 bin/ingest.py report` shows the list).
+  Ask Claude to "harvest" to set it up together. The monthly "tend" clears out what you never
+  use (`python3 bin/ingest.py report` shows the list).
 
 ## Keeping it honest
 
 `python3 bin/lint.py` checks the vault against its own templates and rules.
 Errors block a commit; warnings are worth a look. One warning is about size: the files your AI
 reads every session (`CLAUDE.md`, `Rules.md`, `Me.md`, `Now.md`, each skill) each have a budget in
-`bin/vault.json`, and when one grows past it, ask your AI to compact it.
+`bin/vault.json`, and when one grows past it, say "tend" and your AI compacts it to about three
+quarters of its budget.

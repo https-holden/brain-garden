@@ -41,9 +41,15 @@ Claude Code's own session logs and the git history when there are any, into
 starts work, the files near their size budget, and the lookups that keep finding nothing. It
 never changes a note, and the report stays on this computer.
 
+Once a month, say "tend". Your AI reads that report and proposes one numbered list: check and
+shorten the drafts it keeps reading, compact the files that grew, add the aliases your lookups
+missed, move what has gone cold. It changes only the numbers you approve. When tending is due,
+one line says so as Claude Code starts, and at the top of the morning brief if you use one.
+
 @@README_SECTIONS@@## Keeping it honest
 
 `python3 @@VAULT_PREFIX@@bin/lint.py` checks the vault against its own templates and rules.
 Errors block a commit; warnings are worth a look. One warning is about size: the files your AI
 reads every session (`CLAUDE.md`, `Rules.md`, `Me.md`, `Now.md`, each skill) each have a budget in
-`bin/vault.json`, and when one grows past it, ask your AI to compact it.
+`bin/vault.json`, and when one grows past it, say "tend" and your AI compacts it to about three
+quarters of its budget.
